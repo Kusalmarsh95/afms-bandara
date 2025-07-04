@@ -1,0 +1,33 @@
+/* Set height of body and the document to 100% to enable "full page tabs" */
+body, html {
+    height: 100%;
+    margin: 0;
+}
+
+/* Style tab links */
+.tab-link {
+    background-color: #8c6300;
+    color: black;
+    float: left;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    width: 25%;
+}
+
+.tab-link:hover {
+    background-color: #b4954e;
+}
+
+.tab-content {
+    color: black;
+    display: none;
+    padding: 100px 20px;
+    height: 100%;
+}
+
+#Profile {background-color: whitesmoke;}
+#Contribution {background-color: whitesmoke;}
+#Loans {background-color: whitesmoke;}
+#Withdrawals {background-color: whitesmoke;}

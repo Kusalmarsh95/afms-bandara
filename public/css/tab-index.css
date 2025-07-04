@@ -1,0 +1,36 @@
+/* Set height of body and the document to 100% to enable "full page tabs" */
+body, html {
+    height: 100%;
+    margin: 0;
+}
+
+/* Style tab links */
+.tab-link {
+    background-color: #bdd5af;
+    color: black;
+    float: left;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    width: 25%;
+}
+
+.tab-link:hover {
+    background-color: #3e7d2c;
+}
+
+/* Style the tab content (and add height:100% for full page content) */
+.tab-content {
+    color: black;
+    display: none;
+    padding: 100px 20px;
+    height: 100%;
+}
+
+#Processing {background-color: whitesmoke;}
+#Approved {background-color: whitesmoke;}
+#Reject {background-color: whitesmoke;}
+#Success {background-color: whitesmoke;}
+#Failure {background-color: whitesmoke;}
+#Assign {background-color: whitesmoke;}
