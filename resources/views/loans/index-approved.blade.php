@@ -182,7 +182,7 @@
                     @csrf
                     @method('PUT')
                     <div class="modal-header">
-                        <h5 class="modal-title" id="payModalLabel">Send to Bank</h5>
+                        <h5 class="modal-title" id="bankedModalLabel">Send to Bank</h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
@@ -212,7 +212,7 @@
                     @csrf
                     @method('PUT')
                     <div class="modal-header">
-                        <h5 class="modal-title" id="bankedModalLabel">Loan Disbursement</h5>
+                        <h5 class="modal-title" id="payModalLabel">Loan Disbursement</h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
@@ -220,6 +220,12 @@
                     <div class="modal-body">
                         <div class="row">
                             <label class="col-form-label text-center">Release payment of Loan Applications</label>
+                        </div>
+                        <div class="col-12 row">
+                            <label for="cheque_no" class="col-sm-4 col-form-label">Cheque No</label>
+                            <div class="col-sm-8">
+                                <input type="text" name="cheque_no" class="form-control" value="">
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">

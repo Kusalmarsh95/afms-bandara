@@ -178,7 +178,7 @@ class MonthlyDeductionController extends Controller
             }
 
             // Adjust year for ICP 10
-            $newYear = $icpId == 10 ? $year + 1 : $year;
+//            $newYear = $icpId == 10 ? $year + 1 : $year;
 
             // Update or create contribution summary
             $existingContribution = ContributionSummary::where('membership_id', $membership_id)
@@ -191,7 +191,7 @@ class MonthlyDeductionController extends Controller
                 $newSummary->version = 1;
                 $newSummary->membership_id = $membership_id;
                 $newSummary->icp_id = $icpId;
-                $newSummary->year = $newYear;
+                $newSummary->year = $year;
                 $newSummary->contribution_amount = ($contributionsAddition->type == 'Deposit')
                     ? $contributionsAddition->amount
                     : -$contributionsAddition->amount;
@@ -212,9 +212,9 @@ class MonthlyDeductionController extends Controller
 
             if ($contributionsAddition->type === 'Refund') {
                 $reasonToBatchId = [
-                    'Unit Deduction' => 'ARB014',
-                    'AWOL Deduction' => 'ARB015',
-                    'Advance B Recovery' => 'ARB004',
+                    'Unit Deduction' => 'APB015',
+                    'AWOL Deduction' => 'APB016',
+                    'Advance B Recovery' => 'APB003',
                 ];
                 $reasonToCodeId = [
                     'Unit Deduction' => 'MIRU',
@@ -224,26 +224,26 @@ class MonthlyDeductionController extends Controller
 
                 $reason = $contributionsAddition->reason;
 
-                $aRbatchId = $reasonToBatchId[$reason] ?? 'ARB004';
+                $aPbatchId = $reasonToBatchId[$reason] ?? 'APB003';
                 $transactioncCodeID = $reasonToCodeId[$reason] ?? 'MIRA';
 
                 $payload = [[
-                    "aRbatchId" => $aRbatchId,
+                    "aPbatchId" => $aPbatchId,
                     'customer' => $contributionsAddition->membership->regimental_number . '-' . ($contributionsAddition->membership->enumber ?? '000000'),
 //                    "credit" => 0,
 //                    "debit" => $contributionsAddition->amount,
                     "amount" => $contributionsAddition->amount ?? 0,
                     "transactionDate" => now()->toIso8601String(),
-                    "description" => 'Additional Deduction',
-                    "reference" => $aRbatchId . ' with ' . $contributionsAddition->amount,
-                    "comments" => 'Deduction',
+                    "description" => 'Additional Deduction '.$month.'-'.$year,
+                    "reference" => $contributionsAddition->membership->regimental_number . ' Additional Deduction',
+                    "comments" => $contributionsAddition->remark ?? $reason,
                     "transactioncCodeID" => $transactioncCodeID,
                     "taxTypeID" => 1,
                     "gl" => false,
-                    "ar" => true,
+                    "ap" => true,
                 ]];
 
-                $apiSuccess = $this->sendARBatchUpdate($payload);
+                $apiSuccess = $this->sendAPBatchUpdate($payload);
             } elseif ($contributionsAddition->type === 'Deposit') {
                 $cashBookPayload = [[
                     'cashbookId' => 'CB081',
@@ -251,11 +251,12 @@ class MonthlyDeductionController extends Controller
                     'debit' => 0,
                     'customer' => $contributionsAddition->membership->regimental_number . '-' . ($contributionsAddition->membership->enumber ?? '000000'),
                     'transactionDate' => now()->toIso8601String(),
-                    'description' => $contributionsAddition->reason,
-                    'comments' => 'Additional deposit',
-                    'reference' => $contributionsAddition->membership->name,
+                    "description" => 'Additional Deposit '.$month.'-'.$year,
+                    "reference" => $contributionsAddition->membership->regimental_number . ' Additional Deposit',
+                    "comments" => $contributionsAddition->remark ?? $contributionsAddition->reason,
                     'gl' => false,
-                    'ar' => true,
+                    'ar' => false,
+                    'ap' => true,
                 ]];
 
                 $response = $this->sendCashBookUpdate($cashBookPayload);
@@ -311,10 +312,10 @@ class MonthlyDeductionController extends Controller
 
         return redirect()->back()->with('error', 'Invalid action');
     }
-    private function sendARBatchUpdate(array $payloads)
+    private function sendAPBatchUpdate(array $payloads)
     {
         $now = now();
-        $filename = 'ar_batch_update_' . $now->format('Ymd_His') . '_' . uniqid() . '.log';
+        $filename = 'ap_batch_update_' . $now->format('Ymd_His') . '_' . uniqid() . '.log';
         $logPath = storage_path('logs/adjustments/' . $filename);
 
         // Ensure directory exists
@@ -327,11 +328,11 @@ class MonthlyDeductionController extends Controller
                 ->withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiToken,
                 'Accept' => 'application/json',
-            ])->post($this->apiBaseUrl . '/api/Transaction/ARBatchUpdate', $payloads);
+            ])->post($this->apiBaseUrl . '/api/Transaction/APBatchUpdate', $payloads);
 
             $logData = [
                 'timestamp' => $now->toDateTimeString(),
-                'endpoint' => '/api/Transaction/ARBatchUpdate',
+                'endpoint' => '/api/Transaction/APBatchUpdate',
                 'payload' => $payload[0]['customer'] ?? 'N/A',
                 'status_code' => $response->status(),
                 'success' => $response->successful(),
@@ -340,24 +341,24 @@ class MonthlyDeductionController extends Controller
 
             file_put_contents($logPath, print_r($logData, true));
 
-            if (!$response->successful()) {
-                foreach ($payloads as $payload) {
-                    FailedAdjustmentApi::create([
-                        'enumber' => explode('-', $payload['customer'])[0] ?? 'N/A',
-                        'amount' => $payload['debit'],
-                        'reference' => $payload['reference'] ?? '',
-                        'reason' => 'API response failed: ' . $response->body(),
-                    ]);
-                }
-                return false;
-            }
+//            if (!$response->successful()) {
+//                foreach ($payloads as $payload) {
+//                    FailedAdjustmentApi::create([
+//                        'enumber' => explode('-', $payload['customer'])[0] ?? 'N/A',
+//                        'amount' => $payload['debit'],
+//                        'reference' => $payload['reference'] ?? '',
+//                        'reason' => 'API response failed: ' . $response->body(),
+//                    ]);
+//                }
+//                return false;
+//            }
 
             return true;
 
         } catch (\Exception $e) {
             $logData = [
                 'timestamp' => $now->toDateTimeString(),
-                'endpoint' => '/api/Transaction/ARBatchUpdate',
+                'endpoint' => '/api/Transaction/APBatchUpdate',
                 'payload' => $payload[0]['customer'] ?? 'N/A',
                 'success' => false,
                 'exception' => $e->getMessage(),
@@ -365,14 +366,14 @@ class MonthlyDeductionController extends Controller
 
             file_put_contents($logPath, print_r($logData, true));
 
-            foreach ($payloads as $payload) {
-                FailedAdjustmentApi::create([
-                    'enumber' => explode('-', $payload['customer'])[0] ?? 'N/A',
-                    'amount' => $payload['debit'],
-                    'reference' => $payload['reference'] ?? '',
-                    'reason' => 'Exception: ' . $e->getMessage(),
-                ]);
-            }
+//            foreach ($payloads as $payload) {
+//                FailedAdjustmentApi::create([
+//                    'enumber' => explode('-', $payload['customer'])[0] ?? 'N/A',
+//                    'amount' => $payload['debit'],
+//                    'reference' => $payload['reference'] ?? '',
+//                    'reason' => 'Exception: ' . $e->getMessage(),
+//                ]);
+//            }
             return false;
         }
     }
@@ -406,21 +407,21 @@ class MonthlyDeductionController extends Controller
                 $correction->save();
 
                 $payload = [[
-                    "aRbatchId" => 'ARB009',
+                    "aPbatchId" => 'APB009',
                     'customer' => $correction->membership->regimental_number . '-' . ($correction->membership->enumber ?? '000000'),
                     "amount" => $correction->amount ?? 0,
 //                    "debit" => $correction->type === 'Addition' ? $correction->amount : 0,
                     "transactionDate" => now()->toIso8601String(),
-                    "description" => $correction->type,
-                    "reference" => 'Adjustment with ' . $correction->amount,
-                    "comments" => 'Adjustment Entry',
-                    "transactioncCodeID" => $correction->type === 'Addition' ? 'Adjustmet Entry' : 'Adjustment Entry-',
+                    "description" => 'Adjustment Entry '.date('n').'-'.date('Y'),
+                    "reference" => $correction->membership->regimental_number . ' Adjustment Entry',
+                    "comments" => $correction->remark ?? $correction->type,
+                    "transactioncCodeID" => $correction->type === 'Addition' ? 'AdjP' : 'AdjM',
                     "taxTypeID" => 1,
                     "gl" => false,
-                    "ar" => true,
+                    "ap" => true,
                 ]];
 
-                $apiSuccess = $this->sendARBatchUpdate($payload);
+                $apiSuccess = $this->sendAPBatchUpdate($payload);
 
                 ContributionAssign::create([
                     'additional_id' => $correction->id,
@@ -501,7 +502,7 @@ class MonthlyDeductionController extends Controller
                 'code' => (string) $item['regimental_number'] . '-' . (string) $item['e_no'],
                 'customerName' => (string) $item['name'],
                 'officerRank' => (string) $item['type'],
-                'rank' => str_replace(' ', '', (string) $item['rank']),
+                'rank' => json_encode(str_replace(' ', '', (string) $item['rank'])),
                 'regiment' => (string) $item['regiment'],
                 'status' => 'Active',
                 'bank' => 1,
@@ -516,8 +517,9 @@ class MonthlyDeductionController extends Controller
                 'contactNo2' => '',
             ];
         }
+
         $now = now();
-        $filename = 'ar_batch_update_' . $now->format('Ymd_His') . '_' . uniqid() . '.log';
+        $filename = 'member_' . $now->format('Ymd_His') . '_' . uniqid() . '.log';
         $logPath = storage_path('logs/adjustments/' . $filename);
 
         // Ensure directory exists
@@ -526,7 +528,8 @@ class MonthlyDeductionController extends Controller
         }
         try {
 
-            $response = Http::withHeaders([
+            $response = Http::timeout(300)
+                ->withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiToken,
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json'
@@ -534,7 +537,7 @@ class MonthlyDeductionController extends Controller
 
             $logData = [
                 'timestamp' => $now->toDateTimeString(),
-                'endpoint' => '/api/Transaction/ARBatchUpdate',
+                'endpoint' => '/api/Transaction/CustomerCreate',
                 'payload' => $payload[0]['customer'] ?? 'N/A',
                 'status_code' => $response->status(),
                 'success' => $response->successful(),
@@ -556,7 +559,7 @@ class MonthlyDeductionController extends Controller
         } catch (\Exception $e) {
             $logData = [
                 'timestamp' => $now->toDateTimeString(),
-                'endpoint' => '/api/Transaction/ARBatchUpdate',
+                'endpoint' => '/api/Transaction/CustomerCreate',
                 'payload' => $payload[0]['customer'] ?? 'N/A',
                 'success' => false,
                 'exception' => $e->getMessage(),
@@ -900,16 +903,17 @@ class MonthlyDeductionController extends Controller
                 ];
 
                 $cashbookPayload[] = [
-                    'cashbookId' => 'CB077',
+                    'cashbookId' => 'CB084',
                     'credit' => $amount,
                     'debit' => 0,
                     'transactionDate' => now()->toIso8601String(),
                     'customer' => $member->regimental_number . '-' . $member->enumber,
-                    'description' => 'Monthly Contribution',
-                    'reference' => $member->name,
+                    'description' => 'P&R Monthly Contribution '.$depositMonth.'-'.$depositYear,
+                    'reference' => $member->regimental_number.' '.$depositMonth.'-'.$depositYear,
                     'comments' => $member->name,
                     'gl' => false,
-                    'ar' => true,
+                    'ar' => false,
+                    'ap' => true,
                     // 'transactioncCodeID' => 1,
                     // 'taxTypeID' => 1,
                 ];
@@ -1024,44 +1028,6 @@ class MonthlyDeductionController extends Controller
         }
     }
 
-//    private function sendCashBookUpdate(array $payload)
-//    {
-//        try {
-//            $response = Http::withHeaders([
-//                'Authorization' => 'Bearer ' . $this->apiToken,
-//                'Accept' => 'application/json',
-//                'Content-Type' => 'application/json',
-//            ])->post($this->apiBaseUrl . '/api/Transaction/CashBookUpdate', $payload);
-//
-//            $responseBody = $response->json();
-//
-//            $failedItems = [];
-//
-//            if (is_array($responseBody)) {
-//                foreach ($responseBody as $index => $item) {
-//                    if (isset($item['status']) && strtolower($item['status']) === 'error') {
-//                        $failedItems[] = [
-//                            'index' => $index,
-//                            'reference' => $item['reference'] ?? '',
-//                            'message' => $item['message'] ?? 'Unknown error',
-//                            'customer' => $item['customer'] ?? '',
-//                        ];
-//                    }
-//                }
-//            }
-//
-//            return [
-//                'success' => empty($failedItems),
-//                'message' => $failedItems,
-//            ];
-//
-//        } catch (\Exception $e) {
-//            return [
-//                'success' => false,
-//                'message' => [['message' => $e->getMessage()]],
-//            ];
-//        }
-//    }
     public function downloadCSV($depositYear, $depositMonth, $reqCategory)
     {
         $failures = ContributionFailures::where('year', $depositYear)
@@ -1366,7 +1332,13 @@ class MonthlyDeductionController extends Controller
             }
 
             $interest = $repayment->interest_due;
+            if ($r['amount'] < $interest){
+                $interest = $r['amount'];
+            }
             $capital = $r['amount'] - $interest;
+            if ($capital < 0){
+                $capital = 0;
+            }
 
             // Update LoanApplication
             $app->last_pay_date = $now->format('Y-m-d');
@@ -1397,31 +1369,38 @@ class MonthlyDeductionController extends Controller
             $customer = $r['regimental_number'] . '-' . $r['e_no'] ?? '000000000';
             $name = $r['name'] ?? '';
 
-            $cashbookPayload[] = [
-                "cashbookId" => 'CB073',
-                "credit" => 0,
-                "debit" => $capital,
-                "transactionDate" => $now->toIso8601String(),
-                "customer" => $customer,
-                "description" => $name,
-                "reference" => 'Recovery',
-                "comments" => 'Recovery',
-                "gl" => false,
-                "ar" => true,
-            ];
+            if ($capital>0){
+                $cashbookPayload[] = [
+                    "cashbookId" => 'CB073',
+                    "credit" => 0,
+                    "debit" => $capital,
+                    "transactionDate" => $now->toIso8601String(),
+                    "customer" => $customer,
+                    "description" => 'P&R Monthly Loan Recovery '.$month.'-'.$year,
+                    "reference" => $r['regimental_number'].' Loan Recovery',
+                    "comments" => 'P&R Monthly Loan Recovery ',
+                    "gl" => false,
+                    "ar" => true,
+                    "ap" => false,
+                ];
 
-            $cashbookPayload[] = [
-                "cashbookId" => 'CB079',
-                "credit" => 0,
-                "debit" => $interest,
-                "transactionDate" => $now->toIso8601String(),
-                "customer" => $customer,
-                "description" => $name,
-                "reference" => 'Interest',
-                "comments" => 'Interest',
-                "gl" => false,
-                "ar" => true,
-            ];
+            }
+            if ($interest>0){
+                $cashbookPayload[] = [
+                    "cashbookId" => 'CB079',
+                    "credit" => 0,
+                    "debit" => $interest,
+                    "transactionDate" => $now->toIso8601String(),
+                    "customer" => $customer,
+                    "description" => 'P&R Monthly Interest Recovery '.$month.'-'.$year,
+                    "reference" => $r['regimental_number'].' Interest Recovery',
+                    "comments" => 'P&R Monthly Interest Recovery',
+                    "gl" => false,
+                    "ar" => true,
+                    "ap" => false,
+                ];
+
+            }
 
             $updated++;
         }

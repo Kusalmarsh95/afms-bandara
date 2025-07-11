@@ -34,7 +34,7 @@
                     <form action="{{ route('suwasahana.store', $membership->id) }}" method="POST">
                         @csrf
                         <div class="card-header">
-                            <h5>{{$membership->ranks->rank_name}} {{$membership->name}}</h5>
+                            <h5>{{$membership->ranks->rank_name ?? '-'}} {{$membership->name ?? '-'}}</h5>
                         </div>
                         <div class="card-body">
                             <div class="form-group row">

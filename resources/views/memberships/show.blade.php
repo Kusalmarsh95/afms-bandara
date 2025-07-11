@@ -406,10 +406,10 @@
                         <div class="card-header">
                             <div class="card-title">Contribution</div>
                             <div class="float-right">
+                                @can('memberships-registered-contribution-add')
+                                    <a class="btn btn-sm btn-outline-success" href="{{ route('monthlyDeductions.create', ['id' => $membership->id]) }}"> Add / Deduct</a>
+                                @endcan
                                 @if ($membership->status->id != 8)
-                                    @can('memberships-registered-contribution-add')
-                                        <a class="btn btn-sm btn-outline-success" href="{{ route('monthlyDeductions.create', ['id' => $membership->id]) }}"> Add / Refund</a>
-                                    @endcan
                                     @can('memberships-registered-contribution-add')
                                         <a class="btn btn-sm btn-outline-primary" href="{{ route('correctionCreate', ['id' => $membership->id]) }}"> Correction</a>
                                     @endcan
@@ -751,6 +751,8 @@
                                                                 Approved
                                                             @elseif($loanApplication->processing == 5)
                                                                 Disburse
+                                                            @elseif($loanApplication->processing == 6)
+                                                                To be banked
                                                             @else
                                                                 -
                                                             @endif

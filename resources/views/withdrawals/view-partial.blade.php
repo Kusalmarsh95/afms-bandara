@@ -158,7 +158,7 @@
                             <div class="col-6 row">
                                 <label for="suwasahana_amount" class="col-sm-4 col-form-label">Suwasahana Due</label>
                                 <div class="col-sm-8">
-                                    <input type="text" class="form-control" value="{{ number_format($partialWithdrawal->withdrawal->suwasahana_amount,2) ?? '0.00' }}" readonly>
+                                    <input type="text" class="form-control" value="{{ number_format($partialWithdrawal->withdrawal->suwasahana_amount+$partialWithdrawal->withdrawal->suwasahana_arreas ?? 0,2)}}" readonly>
                                 </div>
                             </div>
                             <div class="col-6 row">

@@ -119,9 +119,9 @@
                                 <td>{{ ++$i }}</td>
                                 <td>{{ $recent->regiment_id ?? ''}}</td>
                                 <td>@if($recent->category_id == 1)
-                                        "Officer"
+                                        Officer
                                     @elseif($recent->category_id == 2)
-                                        "OR"
+                                        OR
                                 @endif</td>
                                 <td>{{ $recent->pnr_count }}</td>
                                 <td>{{ $recent->success_count }}</td>

@@ -671,6 +671,7 @@ class LoanController extends Controller
 
             // Update loan application fields
             $loan->voucher_id = $voucherId;
+            $loan->bulk_cheque_id = $request->cheque_no;
             $loan->processing = 6;
             $loan->arrest_dates = $arrearsDays;
             $loan->arrest_interest = $arrearsInterest;
@@ -681,6 +682,7 @@ class LoanController extends Controller
 
             // Update related loan details
             $loan->loan->total_capital = $loan->approved_amount;
+            $loan->loan->cheque_no = $request->cheque_no;
             $loan->loan->current_monthly_capital_portion = $loanAmountPerInstallment;
             $loan->loan->no_of_installments_paid = 0;
             $loan->loan->settled = 0;
@@ -696,18 +698,22 @@ class LoanController extends Controller
 //                'fwd_by' => Auth::user()->id,
 //                'fwd_by_reason' => 'Paid',
 //            ]);
-            $payloads[] = [
-                "cashbookId" => 'CB078',
-                "credit" => 0,
-                "debit" => $loan->approved_amount,
-                "transactionDate" => now()->toIso8601String(),
-                "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
-                "description" => $loan->membership->name ?? '',
-                "reference" => 'Loan Grant',
-                "comments" => 'Loan disbursement for ' . $loan->application_reg_no,
-                'gl' => false,
-                'ar' => true,
-            ];
+            if ($loan->approved_amount > 0){
+                $payloads[] = [
+                    "cashbookId" => 'CB078',
+                    "credit" => 0,
+                    "debit" => $loan->approved_amount,
+                    "transactionDate" => now()->toIso8601String(),
+                    "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
+                    "description" => $loan->membership->regimental_number . ' 85% Loan' ,
+                    "reference" => $request->cheque_no,
+                    "comments" => 'Loan disbursement for ' . $loan->application_reg_no,
+                    'gl' => false,
+                    'ar' => true,
+                    'ap' => false,
+                ];
+
+            }
 
             $loanMap[$index] = $loan;  // store loan by index for failure logging
         }
@@ -1512,6 +1518,7 @@ class LoanController extends Controller
 
 
         }elseif ($action === 'approve') {
+            $payloads = [];
 
             if (!$this->authenticateApi()) {
                 return response()->json(['error' => 'Failed to authenticate with external API'], 500);
@@ -1536,30 +1543,38 @@ class LoanController extends Controller
             $loan->directSettlement->approved = 1;
             $loan->directSettlement->save();
 
-            $payloads = [[
-                "cashbookId" => 'CB080',
-                "credit" => 0,
-                "debit" => $loan->directSettlement->loan_due_cap ?? 0,
-                "transactionDate" => now()->toIso8601String(),
-                "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
-                "description" => $loan->membership->name ?? '',
-                "reference" => 'Direct Settlement capital',
-                "comments" => 'Direct Settlement for ' . $loan->application_reg_no,
-                'gl' => false,
-                'ar' => true,
-            ],
-                [
-                "cashbookId" => 'CB079',
-                "credit" => 0,
-                "debit" => $loan->directSettlement->arrest_interest ?? 0,
-                "transactionDate" => now()->toIso8601String(),
-                "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
-                "description" => $loan->membership->name ?? '',
-                "reference" => 'Direct Settlement interest',
-                "comments" => 'Direct Settlement for ' . $loan->application_reg_no,
-                'gl' => false,
-                'ar' => true,
-            ]];
+            if ($loan->directSettlement->loan_due_cap>0){
+                $payloads[] = [
+                    "cashbookId" => 'CB080',
+                    "credit" => 0,
+                    "debit" => $loan->directSettlement->loan_due_cap ?? 0,
+                    "transactionDate" => now()->toIso8601String(),
+                    "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
+                    "description" => 'Direct Settlement '.date('n').'-'.date('Y'),
+                    "reference" => $loan->membership->regimental_number .' Direct Settlement capital',
+                    "comments" => 'Direct Settlement for ' . $loan->application_reg_no,
+                    'gl' => false,
+                    'ar' => true,
+                    'ap' => false,
+                ];
+
+            }
+            if ($loan->directSettlement->arrest_interest>0){
+                $payloads[] =[
+                    "cashbookId" => 'CB079',
+                    "credit" => 0,
+                    "debit" => $loan->directSettlement->arrest_interest ?? 0,
+                    "transactionDate" => now()->toIso8601String(),
+                    "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
+                    "description" => 'Direct Settlement '.date('n').'-'.date('Y'),
+                    "reference" => $loan->membership->regimental_number .' Direct Settlement interest',
+                    "comments" => 'Direct Settlement for ' . $loan->application_reg_no,
+                    'gl' => false,
+                    'ar' => true,
+                    'ap' => false,
+                ];
+
+            }
 
             DirectSettlementAssign::create([
                 'loan_id' => $loan->application_reg_no,

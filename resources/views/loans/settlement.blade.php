@@ -37,7 +37,7 @@
                         <div class="card-header">
                             <div class="form-group row">
                                 <div class="col-md-6">
-                                    <h5>{{$loan->membership->ranks->rank_name}} {{$loan->membership->name}}</h5>
+                                    <h5>{{$loan->membership->ranks->rank_name ?? ''}} {{$loan->membership->name ??''}}</h5>
                                 </div>
                                 @if ($loan->loan->settled == 1)
                                     <div class="col-md-6 text-right">

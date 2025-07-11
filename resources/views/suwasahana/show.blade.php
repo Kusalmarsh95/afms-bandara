@@ -33,7 +33,7 @@
             @method('PUT')
             <div class="card">
                 <div class="card-header">
-                    <h5>{{$suwasahana->membership->ranks->rank_name}} {{$suwasahana->membership->name}}</h5>
+                    <h5>{{$suwasahana->membership->ranks->rank_name ?? ''}} {{$suwasahana->membership->name ?? ''}}</h5>
                 </div>
                 <div class="card-body">
                     <div class="form-group row">

@@ -126,9 +126,9 @@
             </div>
             <div id="Assign" class="tab-content">
                 <div class="col-md-12 text-right mb-3">
-                    @if($sendToBankCount>0)
-                        <button type="button" class="btn btn-sm btn-outline-success  m-2" data-toggle="modal" data-target="#payModal">Release Payment</button>
-                    @endif
+{{--                    @if($sendToBankCount>0)--}}
+{{--                        <button type="button" class="btn btn-sm btn-outline-success  m-2" data-toggle="modal" data-target="#payModal">Release Payment</button>--}}
+{{--                    @endif--}}
                     @if($payCount>0)
                             <a class="btn btn-sm btn-outline-primary" href="{{ route('withdrawal-custout') }}">Cust Out <i class="fas fa-file-csv text-green"></i> </a>
                             <button type="button" class="btn btn-sm btn-success  m-2" data-toggle="modal" data-target="#bankedModal">Send to Bank</button>
@@ -187,7 +187,7 @@
                     @csrf
                     @method('PUT')
                     <div class="modal-header">
-                        <h5 class="modal-title" id="payModalLabel">Send to Bank</h5>
+                        <h5 class="modal-title" id="bankedModalLabel">Send to Bank</h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
@@ -217,7 +217,7 @@
                     @csrf
                     @method('PUT')
                     <div class="modal-header">
-                        <h5 class="modal-title" id="bankedModalLabel">Partial Disbursement</h5>
+                        <h5 class="modal-title" id="payModalLabel">Partial Disbursement</h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
@@ -225,6 +225,12 @@
                     <div class="modal-body">
                         <div class="row">
                             <label class="col-form-label text-center">Release payment of Partial Applications</label>
+                        </div>
+                        <div class="col-12 row">
+                            <label for="cheque_no" class="col-sm-4 col-form-label">Cheque No</label>
+                            <div class="col-sm-8">
+                                <input type="text" name="cheque_no" class="form-control" value="">
+                            </div>
                         </div>
                     </div>
                     <div class="modal-footer">

@@ -56,11 +56,11 @@ class InterestCalculationController extends Controller
             return false;
         }
     }
-    private function sendARBatchUpdate(array $payloads)
+    private function sendAPBatchUpdate(array $payloads)
     {
 
         $now = now();
-        $filename = 'ar_batch_update_' . $now->format('Ymd_His') . '_' . uniqid() . '.log';
+        $filename = 'interest_update_' . $now->format('Ymd_His') . '_' . uniqid() . '.log';
         $logPath = storage_path('logs/adjustments/' . $filename);
 
         // Ensure directory exists
@@ -72,10 +72,10 @@ class InterestCalculationController extends Controller
                 ->withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiToken,
                 'Accept' => 'application/json',
-            ])->post($this->apiBaseUrl . '/api/Transaction/ARBatchUpdate', $payloads);
+            ])->post($this->apiBaseUrl . '/api/Transaction/APBatchUpdate', $payloads);
             $logData = [
                 'timestamp' => $now->toDateTimeString(),
-                'endpoint' => '/api/Transaction/ARBatchUpdate',
+                'endpoint' => '/api/Transaction/APBatchUpdate',
                 'payload' => $payload[0]['customer'] ?? 'N/A',
                 'status_code' => $response->status(),
                 'success' => $response->successful(),
@@ -101,7 +101,7 @@ class InterestCalculationController extends Controller
         } catch (\Exception $e) {
             $logData = [
                 'timestamp' => $now->toDateTimeString(),
-                'endpoint' => '/api/Transaction/ARBatchUpdate',
+                'endpoint' => '/api/Transaction/APBatchUpdate',
                 'payload' => $payload[0]['customer'] ?? 'N/A',
                 'success' => false,
                 'exception' => $e->getMessage(),
@@ -125,7 +125,7 @@ class InterestCalculationController extends Controller
         $regiment = $request->regiment_id;
         $category = $request->category_id;
         $year = $request->year;
-        $icpId = $request->icp_id;
+        $icpId = (int) $request->icp_id;
         $interestRate = $request->interest_rate;
 
         $monthRange = $this->getMonthRange($icpId);
@@ -148,21 +148,18 @@ class InterestCalculationController extends Controller
 
         $membershipIds = $contribution_yearly_summary->pluck('membership_id')->all();
 
-        // Prefetch all contributions in one query grouped by membership_id
         $contributionsByMember = Contribution::where('year', $year)
             ->whereIn('membership_id', $membershipIds)
             ->whereBetween('month', $monthRange)
             ->get()
             ->groupBy('membership_id');
 
-        // Prefetch latest partial withdrawals keyed by membership_id
         $partialWithdrawals = PartialWithdrawalLog::whereIn('membership_id', $membershipIds)
             ->orderByDesc('id')
             ->get()
             ->unique('membership_id')
             ->keyBy('membership_id');
 
-        // Prefetch latest full withdrawals keyed by membership_id
         $fullWithdrawals = FullWithdrawalLog::whereIn('membership_id', $membershipIds)
             ->orderByDesc('id')
             ->get()
@@ -172,109 +169,107 @@ class InterestCalculationController extends Controller
         $bulkPayloads = [];
         $newSummaries = [];
 
-        DB::transaction(function () use (
-            $contribution_yearly_summary,
-            $contributionsByMember,
-            $partialWithdrawals,
-            $fullWithdrawals,
-            $interestRate,
-            $year,
-            $icpId,
-            &$bulkPayloads,
-            &$newSummaries
-        ) {
-            foreach ($contribution_yearly_summary as $summary) {
-                $member = $summary->membership;
-                $memberId = $summary->membership_id;
+        try {
+            DB::transaction(function () use (
+                $contribution_yearly_summary,
+                $contributionsByMember,
+                $partialWithdrawals,
+                $fullWithdrawals,
+                $interestRate,
+                $year,
+                $icpId,
+                &$bulkPayloads,
+                &$newSummaries
+            ) {
+                foreach ($contribution_yearly_summary as $summary) {
+                    $member = $summary->membership;
+                    $memberId = $summary->membership_id;
 
-                // Safely get contributions sum, avoid undefined key error
-                $contribution_amount = isset($contributionsByMember[$memberId])
-                    ? $contributionsByMember[$memberId]->sum('amount')
-                    : 0;
+                    $contribution_amount = isset($contributionsByMember[$memberId])
+                        ? $contributionsByMember[$memberId]->sum('amount')
+                        : 0;
 
-                $summary->contribution_amount += $contribution_amount;
-                $summary->yearly_interest = $summary->opening_balance * $interestRate / 100;
+                    $summary->contribution_amount += $contribution_amount;
+                    $summary->yearly_interest = $summary->opening_balance * $interestRate / 100;
 
-                // Safely get withdrawals, avoid undefined key error
-                $withdrawal = $partialWithdrawals[$memberId] ?? null;
-                $fullWithdrawal = $fullWithdrawals[$memberId] ?? null;
+                    $withdrawal = $partialWithdrawals[$memberId] ?? null;
+                    $fullWithdrawal = $fullWithdrawals[$memberId] ?? null;
 
-                if ($withdrawal) {
-                    $summary->closing_balance = $summary->contribution_amount + $summary->yearly_interest
-                        + $summary->opening_balance - $withdrawal->withdrawal_amount;
+                    if ($withdrawal) {
+                        $summary->closing_balance = $summary->contribution_amount + $summary->yearly_interest
+                            + $summary->opening_balance - $withdrawal->withdrawal_amount;
 
-                    $withdrawal->is_batch_to_do = 0;
-                    $withdrawal->save();
-                } elseif ($fullWithdrawal) {
-                    $summary->closing_balance = $summary->contribution_amount + $summary->yearly_interest
-                        + $summary->opening_balance - $fullWithdrawal->withdrawal_amount;
+                        $withdrawal->is_batch_to_do = 0;
+                        $withdrawal->save();
+                    } elseif ($fullWithdrawal) {
+                        $summary->closing_balance = $summary->contribution_amount + $summary->yearly_interest
+                            + $summary->opening_balance - $fullWithdrawal->withdrawal_amount;
 
-                    $fullWithdrawal->is_batch_to_do = 0;
-                    $fullWithdrawal->save();
-                } else {
-                    $summary->closing_balance = $summary->contribution_amount + $summary->yearly_interest
-                        + $summary->opening_balance;
+                        $fullWithdrawal->is_batch_to_do = 0;
+                        $fullWithdrawal->save();
+                    } else {
+                        $summary->closing_balance = $summary->contribution_amount + $summary->yearly_interest
+                            + $summary->opening_balance;
+                    }
+
+                    $summary->transaction_date = now()->format('Y-m-d');
+                    $summary->save();
+
+                    $nextIcpId = match ($icpId) {
+                        10 => 20,
+                        20 => 30,
+                        30 => 40,
+                        40 => 10,
+                        default => $icpId,
+                    };
+
+                    $nextYear = ($icpId === 40) ? $year + 1 : $year;
+
+                    $transactionDate = match ($icpId) {
+                        10 => now()->format('Y-06-30'),
+                        20 => now()->format('Y-09-30'),
+                        30 => now()->format('Y-12-31'),
+                        40 => now()->addYear()->format('Y-03-31'),
+                        default => now()->format('Y-m-d'),
+                    };
+
+                    $newSummaries[] = [
+                        'opening_balance' => $summary->closing_balance,
+                        'membership_id' => $memberId,
+                        'year' => $nextYear,
+                        'icp_id' => $nextIcpId,
+                        'version' => 0,
+                        'transaction_date' => $transactionDate,
+                    ];
+
+                    $bulkPayloads[] = [
+                        "aPbatchId" => 'APB001',
+                        "amount" => $summary->yearly_interest,
+                        "transactionDate" => now()->toIso8601String(),
+                        "customer" => $member->regimental_number . '-' . $member->enumber,
+                        "description" => 'Interest for Quarter-' . $icpId/10 . ' ' . $summary->year,
+                        "reference" => $member->regimental_number . ' Q' . $icpId/10 . '-' . $summary->year,
+                        "comments" => 'Yearly interest commit',
+                        "transactioncCodeID" => 'MIE',
+                        "taxTypeID" => 1,
+                        "gl" => false,
+                        "ap" => true,
+                    ];
                 }
 
-                $summary->transaction_date = now()->format('Y-m-d');
-                $summary->save();
-
-                // Determine next ICP id and transaction date using PHP 8 match (or switch alternative)
-                $nextIcpId = match ($icpId) {
-                    10 => 20,
-                    20 => 30,
-                    30 => 40,
-                    40 => 10,
-                    default => $icpId, // fallback
-                };
-
-                $nextYear = ($icpId === 40) ? $year + 1 : $year;
-
-                $transactionDate = match ($icpId) {
-                    10 => now()->format('Y-06-30'),
-                    20 => now()->format('Y-09-30'),
-                    30 => now()->format('Y-12-31'),
-                    40 => now()->addYear()->format('Y-03-31'),
-                    default => now()->format('Y-m-d'),
-                };
-
-                // Prepare new summary record for bulk insert
-                $newSummaries[] = [
-                    'opening_balance' => $summary->closing_balance,
-                    'membership_id' => $memberId,
-                    'year' => $nextYear,
-                    'icp_id' => $nextIcpId,
-                    'version' => 0,
-                    'transaction_date' => $transactionDate,
-                ];
-
-                // Prepare API payload
-                $bulkPayloads[] = [
-                    "aRbatchId" => 'ARB003',
-                    "amount" => $summary->yearly_interest,
-//                    "credit" => $summary->yearly_interest,
-//                    "debit" => 0,
-                    "transactionDate" => now()->toIso8601String(),
-                    "customer" => $member->regimental_number . '-' . $member->enumber,
-                    "description" => 'Quarterly Interest Payment',
-                    "reference" => 'Interest for Q- ' . $summary->icp_id . ' of ' . $summary->year,
-                    "comments" => 'Yearly interest credited',
-                    "transactioncCodeID" => 'MIE',
-                    "taxTypeID" => 1,
-                    "gl" => false,
-                    "ar" => true,
-                ];
+                if (!empty($newSummaries)) {
+                    ContributionSummary::insert($newSummaries);
+                }
+            });
+        } catch (\Illuminate\Database\QueryException $e) {
+            if ($e->getCode() == 23000) {
+                return redirect()->back()->with('error', 'Try to commit interest for already committed members.');
             }
+            return redirect()->back()->with('error', 'An unexpected database error occurred.');
+        }
 
-            // Bulk insert all new summaries at once
-            if (!empty($newSummaries)) {
-                ContributionSummary::insertOrIgnore($newSummaries);
-            }
-        });
-
-        // Call external API outside DB transaction
         $failedInterestApiCount = 0;
-        if (!$this->sendARBatchUpdate($bulkPayloads)) {
+        if (!$this->sendAPBatchUpdate($bulkPayloads)) {
             $failedInterestApiCount = count($bulkPayloads);
         }
 

@@ -172,33 +172,18 @@ class SuwasahanaController extends Controller
 
         $arPayloads[] = [
             "aRbatchId" => 'ARB008',
-//                        "credit" => 0,
-//                        "debit" => ($fullWithdrawal->fullWithdrawal->suwasahana_amount + $fullWithdrawal->fullWithdrawal->suwasahana_arreas) ?? 0,
-            "amount" => ($request->settle_amount + $request->settle_interest) ?? 0,
-            "transactionDate" => now()->toIso8601String(),
-            "customer" => $suwasahana->membership->regimental_number . '-' . $suwasahana->membership->enumber ?? '000000000',
-            "description" => $suwasahana->membership->name ?? '',
-            "reference" => 'Direct Settlement Suwasahana of '.$suwasahana->membership->regimental_number,
-            "comments" => 'Suwasahana Settlement',
-            "transactioncCodeID" => 'LoanRecM',
-            "taxTypeID" => 1,
-            "gl" => false,
-            "ar" => true,
-        ];
-        $arPayloads[] = [
-            "aRbatchId" => 'ARB008',
             "amount" => $request->settle_amount ?? 0,
 //                        "credit" => $fullWithdrawal->fullWithdrawal->suwasahana_amount ?? 0,
 //                        "debit" => 0,
             "transactionDate" => now()->toIso8601String(),
-            "customer" => '7500>7530',
-            "description" => $suwasahana->membership->name ?? '',
-            "reference" => 'Direct Settlement Suwasahana of '.$suwasahana->membership->regimental_number,
-            "comments" => 'Suwasahana Settlement loan amount',
-            "transactioncCodeID" => 'JNL',
+            "customer" => $suwasahana->membership->regimental_number . '-' . $suwasahana->membership->enumber ?? '000000000',
+            "description" => 'Suwasahana Settlement '.date('n').'-'.date('Y'),
+            "reference" => $suwasahana->membership->regimental_number .' Suwasahana Settlement',
+            "comments" => 'Suwasahana Settlement',
+            "transactioncCodeID" => 'LoanRecAss',
             "taxTypeID" => 1,
-            "gl" => true,
-            "ar" => false,
+            "ar" => true,
+            "gl" => false,
         ];
         if ($request->settle_interest>0){
             $arPayloads[] = [
@@ -207,14 +192,14 @@ class SuwasahanaController extends Controller
 //                        "credit" => $fullWithdrawal->fullWithdrawal->suwasahana_arreas ?? 0,
 //                        "debit" => 0,
                 "transactionDate" => now()->toIso8601String(),
-                "customer" => '1000>1012',
-                "description" => $suwasahana->membership->name ?? '',
-                "reference" => 'Direct Settlement Suwasahana of '.$suwasahana->membership->regimental_number,
-                "comments" => 'Suwasahana Settlement interest amount',
-                "transactioncCodeID" => 'JNL',
+                "customer" => $suwasahana->membership->regimental_number . '-' . $suwasahana->membership->enumber ?? '000000000',
+                "description" => 'Suwasahana Interest Settlement '.date('n').'-'.date('Y'),
+                "reference" => $suwasahana->membership->regimental_number .' Suwasahana Interest Settlement',
+                "comments" => 'Suwasahana Interest Settlement',
+                "transactioncCodeID" => 'LoanRecInt',
                 "taxTypeID" => 1,
-                "gl" => true,
-                "ar" => false,
+                "ar" => true,
+                "gl" => false,
             ];
         }
         $this->sendARBatchUpdate($arPayloads);
@@ -251,17 +236,17 @@ class SuwasahanaController extends Controller
 
             file_put_contents($logPath, print_r($logData, true));
 
-            if (!$response->successful()) {
-                foreach ($payloads as $payload) {
-                    FailureLoanApi::create([
-                        'enumber' => explode('-', $payload['customer'])[0]?? $payload['transactioncCodeID'],
-                        'amount' => $payload['amount'],
-                        'reference' => $payload['reference'] ?? '',
-                        'reason' => 'API response failed: ' . $response->body(),
-                    ]);
-                }
-                return false;
-            }
+//            if (!$response->successful()) {
+//                foreach ($payloads as $payload) {
+//                    FailureLoanApi::create([
+//                        'enumber' => explode('-', $payload['customer'])[0]?? $payload['transactioncCodeID'],
+//                        'amount' => $payload['amount'],
+//                        'reference' => $payload['reference'] ?? '',
+//                        'reason' => 'API response failed: ' . $response->body(),
+//                    ]);
+//                }
+//                return false;
+//            }
 
             return true;
 
@@ -521,34 +506,18 @@ class SuwasahanaController extends Controller
 
                 $arPayloads[] = [
                     "aRbatchId" => 'ARB008',
-//                        "credit" => 0,
-//                        "debit" => ($fullWithdrawal->fullWithdrawal->suwasahana_amount + $fullWithdrawal->fullWithdrawal->suwasahana_arreas) ?? 0,
-                    "amount" => ($item['interest'] + $item['installment']) ?? 0,
-                    "transactionDate" => now()->toIso8601String(),
-                    "customer" => $customer,
-                    "description" => $suwasahana->membership->name ?? '',
-                    "reference" => 'Monthly recovery of '.$suwasahana->membership->regimental_number,
-                    "comments" => 'Monthly upload Suwasahana loan recovery installment',
-                    "transactioncCodeID" => 'LoanRecM',
-                    "taxTypeID" => 1,
-                    "gl" => false,
-                    "ar" => true,
-                ];
-                $arPayloads[] = [
-                    "aRbatchId" => 'ARB008',
                     "amount" => $item['installment'] ?? 0,
 //                        "credit" => $fullWithdrawal->fullWithdrawal->suwasahana_amount ?? 0,
 //                        "debit" => 0,
                     "transactionDate" => now()->toIso8601String(),
-                    "customer" => '7500>7530',
-                    "description" => $suwasahana->membership->name ?? '',
-                    "reference" => 'Monthly recovery of '.$suwasahana->membership->regimental_number,
-//                        "reference" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
-                    "comments" => 'Monthly upload Suwasahana loan recovery installment',
-                    "transactioncCodeID" => 'JNL',
+                    "customer" => $customer,
+                    "description" => 'P&R Monthly Suwasahana Recovery '.$month.'-'.$year,
+                    "reference" => $suwasahana->membership->regimental_number .' Suwasahana Recovery',
+                    "comments" => 'P&R Monthly Suwasahana Recovery',
+                    "transactioncCodeID" => 'LoanRecAss',
                     "taxTypeID" => 1,
-                    "gl" => true,
-                    "ar" => false,
+                    "ar" => true,
+                    "gl" => false,
                 ];
                 $arPayloads[] = [
                     "aRbatchId" => 'ARB008',
@@ -556,15 +525,14 @@ class SuwasahanaController extends Controller
 //                        "credit" => $fullWithdrawal->fullWithdrawal->suwasahana_arreas ?? 0,
 //                        "debit" => 0,
                     "transactionDate" => now()->toIso8601String(),
-                    "customer" => '1000>1012',
-                    "description" => $suwasahana->membership->name ?? '',
-                    "reference" => 'Monthly recovery of '.$suwasahana->membership->regimental_number,
-//                        "reference" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
-                    "comments" => 'Monthly suwasahana interest recovery',
-                    "transactioncCodeID" => 'JNL',
+                    "customer" => $customer,
+                    "description" => 'P&R Monthly Suwasahana Interest '.$month.'-'.$year,
+                    "reference" => $suwasahana->membership->regimental_number .' Suwasahana Interest',
+                    "comments" => 'P&R Monthly Suwasahana Interest',
+                    "transactioncCodeID" => 'LoanRecInt',
                     "taxTypeID" => 1,
-                    "gl" => true,
-                    "ar" => false,
+                    "ar" => true,
+                    "gl" => false,
                 ];
             } catch (ModelNotFoundException $e) {
                 $failures[] = [
