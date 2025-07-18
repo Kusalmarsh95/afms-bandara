@@ -38,7 +38,7 @@
                         <tbody>
                         <tr>
 {{--                            <td>{{ $loanCount }}</td>--}}
-                            <td>{{ $summary['inserted']  ?? 0 }}</td>
+                            <td>{{ $fullCount  ?? 0 }}</td>
                             <td>{{ $summary['failed'] ?? 0 }}</td>
                         </tr>
                         </tbody>

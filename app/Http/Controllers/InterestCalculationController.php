@@ -130,7 +130,7 @@ class InterestCalculationController extends Controller
 
         $monthRange = $this->getMonthRange($icpId);
         if (!$this->authenticateApi()) {
-            return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+            return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
         }
 
         $contribution_yearly_summary = ContributionSummary::with(['membership:id,enumber,regimental_number'])

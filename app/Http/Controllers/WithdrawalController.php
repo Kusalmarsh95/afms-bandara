@@ -591,13 +591,16 @@ class WithdrawalController extends Controller
         $arPayloads=[];
         $apPayloads=[];
         $cashbookPayloads=[];
+        $split=[];
+        $splitDr=[];
+        $splitCr=[];
         $action = $request->approval;
         $voucherId = Carbon::now()->format('Ymd');
 
         if ($action === 'pay') {
-//            if (!$this->authenticateApi()) {
-//                return response()->json(['error' => 'Failed to authenticate with external API'], 500);
-//            }
+            if (!$this->authenticateApi()) {
+                return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
+            }
             foreach ($partialWithdrawals as $partialWithdrawal) {
                 $suwasahana = Suwasahana::where('member_id', $partialWithdrawal->member_id)
                     ->where('settled', 0)
@@ -618,36 +621,53 @@ class WithdrawalController extends Controller
                     $suwasahana->total_recovered_capital += $partialWithdrawal->withdrawal->suwasahana_amount;
                     $suwasahana->total_recovered_interest += $partialWithdrawal->withdrawal->suwasahana_arreas;
 //                    $suwasahana->save();
-
-                    $arPayloads[] = [
-                        "aRbatchId" => 'ARB007',
-                        "amount" => $partialWithdrawal->withdrawal->suwasahana_amount ?? 0,
-//                        "credit" => $partialWithdrawal->withdrawal->suwasahana_amount ?? 0,
-//                        "debit" => 0,
-                        "transactionDate" => now()->toIso8601String(),
-                        "customer" => $partialWithdrawal->membership->regimental_number . '-' . $partialWithdrawal->membership->enumber ?? '00000000',
-                        "description" => 'Suwasahana Loan Recovery from Member Fund',
-                        "reference" => $request->cheque_no,
-                        "comments" => $partialWithdrawal->membership->regimental_number.' Suwasahana Loan Recovery',
-                        "transactioncCodeID" => 'LoanRecAss',
-                        "taxTypeID" => 1,
-                        "ar" => true,
-                        "gl" => false,
-                    ];
+                    if ($partialWithdrawal->withdrawal->suwasahana_amount>0){
+                        $splitDr[] = [
+                                'credit' => 0,
+                                'debit' => $partialWithdrawal->withdrawal->suwasahana_amount,
+                                'customer' => $partialWithdrawal->membership->regimental_number . '-' . ($partialWithdrawal->membership->enumber ?? '000000'),
+                                'transactionDate' => now()->format('Y-m-d'),
+                                "description" => 'Withdrawal '.date('n').'-'.date('Y'),
+                                "reference" => $request->cheque_no,
+                                "comments" => $partialWithdrawal->membership->regimental_number.' Withdrawal',
+                            ];
+                        $splitCr[] = [
+                                'credit' => $partialWithdrawal->withdrawal->suwasahana_amount,
+                                'debit' => 0,
+                                'customer' => $partialWithdrawal->membership->regimental_number . '-' . ($partialWithdrawal->membership->enumber ?? '000000'),
+                                'transactionDate' => now()->format('Y-m-d'),
+                                "description" => 'Withdrawal '.date('n').'-'.date('Y'),
+                                "reference" => $request->cheque_no,
+                                "comments" => $partialWithdrawal->membership->regimental_number.' Withdrawal',
+                            ];
+//                        $arPayloads[] = [
+//                            "aRbatchId" => 'ARB007',
+//                            "amount" => $partialWithdrawal->withdrawal->suwasahana_amount ?? 0,
+////                        "credit" => $partialWithdrawal->withdrawal->suwasahana_amount ?? 0,
+////                        "debit" => 0,
+//                            "transactionDate" => now()->toIso8601String(),
+//                            "customer" => $partialWithdrawal->membership->regimental_number . '-' . $partialWithdrawal->membership->enumber ?? '00000000',
+//                            "description" => 'Suwasahana Recovery-PW',
+//                            "reference" => 'Cheque no-'.$request->cheque_no,
+//                            "comments" => $partialWithdrawal->membership->regimental_number.' Suwasahana Loan Recovery',
+//                            "transactioncCodeID" => 'LoanRecAss',
+//                            "taxTypeID" => 1,
+//                            "ar" => true,
+//                            "gl" => false,
+//                        ];
+                    }
                     if ($partialWithdrawal->withdrawal->suwasahana_arreas>0){
-                        $arPayloads[] = [
-                            "aRbatchId" => 'ARB007',
-                            "amount" => $partialWithdrawal->withdrawal->suwasahana_arreas ?? 0,
-//                        "credit" => $partialWithdrawal->withdrawal->suwasahana_arreas ?? 0,
-//                        "debit" => 0,
+                        $apPayloads[] = [
+                            "aPbatchId" => 'APB010',
+                            "amount" => $partialWithdrawal->withdrawal->suwasahana_arreas,
                             "transactionDate" => now()->toIso8601String(),
                             "customer" => $partialWithdrawal->membership->regimental_number . '-' . $partialWithdrawal->membership->enumber ?? '00000000',
-                            "description" => 'Suwasahana Interest Recovery from Member Fund',
-                            "reference" => $request->cheque_no,
+                            "description" => 'Suwasahana Int-PW',
+                            "reference" => 'Cheque no-'.$request->cheque_no,
                             "comments" => $partialWithdrawal->membership->regimental_number.' Suwasahana Interest Recovery',
                             "transactioncCodeID" => 'LoanRecInt',
                             "taxTypeID" => 1,
-                            "ar" => true,
+                            "ap" => true,
                             "gl" => false,
                         ];
                     }
@@ -659,67 +679,44 @@ class WithdrawalController extends Controller
                         $loanApplication->loan->currentuser = Auth::user()->name;
 //                        $loanApplication->loan->save();
                         if ($partialWithdrawal->withdrawal->purpose==1){
-//                            $cashbookPayloads[] = [
-//                                'cashbookId' => 'CB076',
-//                                'credit' => 0,
-//                                'debit' => $partialWithdrawal->withdrawal->total_withdraw_amount ?? 0,
-//                                'customer' => $partialWithdrawal->membership->regimental_number . '-' . ($partialWithdrawal->membership->enumber ?? '000000'),
-//                                'transactionDate' => now()->toIso8601String(),
-//                                "description" => 'Withdrawal '.date('n').'-'.date('Y'),
-//                                "reference" => $request->cheque_no,
-//                                "comments" => $partialWithdrawal->membership->regimental_number.' Withdrawal',
-//                                'gl' => false,
-//                                'ar' => false,
-//                                'ap' => true,
-//                            ];
-                            $apPayloads[] = [
-                                "aPbatchId" => 'APB014',
-                                "amount" => $partialWithdrawal->withdrawal->total_withdraw_amount ?? 0,
-//                            "credit" => $partialWithdrawal->withdrawal->approved_amount ?? 0,
-//                            "debit" => 0,
-                                "transactionDate" => now()->toIso8601String(),
-                                "customer" => $partialWithdrawal->membership->regimental_number . '-' . $partialWithdrawal->membership->enumber ?? '00000000',
-                                "description" => 'Withdrawals '.date('n').'-'.date('Y'),
-                                "reference" => $request->cheque_no,
-                                "comments" => $partialWithdrawal->membership->regimental_number.' Settled Loan & Withdrawal',
-                                "transactioncCodeID" => 'WW',
-                                "taxTypeID" => 1,
-                                "gl" => false,
-                                "ap" => true,
-                            ];
-                        }
-
-                        $arPayloads[] = [
-                            "aRbatchId" => 'ARB008',
-                            "amount" => $partialWithdrawal->withdrawal->loan_due_cap ?? 0,
-//                            "credit" => $partialWithdrawal->withdrawal->loan_due_cap ?? 0,
-//                            "debit" => 0,
-                            "transactionDate" => now()->toIso8601String(),
-                            "customer" => $partialWithdrawal->membership->regimental_number . '-' . $partialWithdrawal->membership->enumber ?? '00000000',
-                            "description" => 'Loan Recovery from Member Fund',
-                            "reference" => $request->cheque_no,
-                            "comments" => $partialWithdrawal->membership->regimental_number.' Loan Recovery',
-                            "transactioncCodeID" => 'LoanRecAss',
-                            "taxTypeID" => 1,
-                            "ar" => true,
-                            "gl" => false,
-                        ];
-                        if($partialWithdrawal->withdrawal->arrest_interest>0){
-                            $arPayloads[] = [
-                                "aRbatchId" => 'ARB008',
-                                "amount" => $partialWithdrawal->withdrawal->arrest_interest ?? 0,
+                            if ($partialWithdrawal->withdrawal->loan_due_cap>0){
+                                $splitDr[] = [
+                                    'credit' => 0,
+                                    'debit' => $partialWithdrawal->withdrawal->loan_due_cap,
+                                    'customer' => $partialWithdrawal->membership->regimental_number . '-' . ($partialWithdrawal->membership->enumber ?? '000000'),
+                                    'transactionDate' => now()->format('Y-m-d'),
+                                    "description" => 'Withdrawal '.date('n').'-'.date('Y'),
+                                    "reference" => $request->cheque_no,
+                                    "comments" => $partialWithdrawal->membership->regimental_number.' Withdrawal',
+                                ];
+                                $splitCr[] = [
+                                    'credit' => $partialWithdrawal->withdrawal->loan_due_cap,
+                                    'debit' => 0,
+                                    'customer' => $partialWithdrawal->membership->regimental_number . '-' . ($partialWithdrawal->membership->enumber ?? '000000'),
+                                    'transactionDate' => now()->format('Y-m-d'),
+                                    "description" => 'Withdrawal '.date('n').'-'.date('Y'),
+                                    "reference" => $request->cheque_no,
+                                    "comments" => $partialWithdrawal->membership->regimental_number.' Withdrawal',
+                                ];
+                            }
+                            if($partialWithdrawal->withdrawal->arrest_interest>0){
+                                $apPayloads[] = [
+                                    "aPbatchId" => 'APB008',
+                                    "amount" => $partialWithdrawal->withdrawal->arrest_interest ?? 0,
 //                            "credit" => $partialWithdrawal->withdrawal->arrest_interest ?? 0,
 //                            "debit" => 0,
-                                "transactionDate" => now()->toIso8601String(),
-                                "customer" => $partialWithdrawal->membership->regimental_number . '-' . $partialWithdrawal->membership->enumber ?? '00000000',
-                                "description" => 'Interest Recovery from Member Fund',
-                                "reference" => $request->cheque_no,
-                                "comments" => $partialWithdrawal->membership->regimental_number.' Loan Interest Recovery',
-                                "transactioncCodeID" => 'LoanRecInt',
-                                "taxTypeID" => 1,
-                                "ar" => true,
-                                "gl" => false,
-                            ];
+                                    "transactionDate" => now()->toIso8601String(),
+                                    "customer" => $partialWithdrawal->membership->regimental_number . '-' . $partialWithdrawal->membership->enumber ?? '00000000',
+                                    "description" => 'Interest Recovery-80% Withdrawal',
+                                    "reference" => 'Cheque no-'.$request->cheque_no,
+                                    "comments" => $partialWithdrawal->membership->regimental_number.' Loan Interest Recovery',
+                                    "transactioncCodeID" => 'LoanRecInt',
+                                    "taxTypeID" => 1,
+                                    "ap" => true,
+                                    "gl" => false,
+                                ];
+                            }
+
                         }
 
 //                        DirectSettlment::create([
@@ -739,38 +736,19 @@ class WithdrawalController extends Controller
 //                            'currentuser' => Auth::user()->name,
 //                            'created_system' => 'AFMS',
 //                        ]);
-                    } else{
-                        $apPayloads[] = [
-                            "aPbatchId" => 'APB014',
-                            "amount" => $partialWithdrawal->withdrawal->approved_amount ?? 0,
-//                            "credit" => $partialWithdrawal->withdrawal->approved_amount ?? 0,
-//                            "debit" => 0,
-                            "transactionDate" => now()->toIso8601String(),
-                            "customer" => $partialWithdrawal->membership->regimental_number . '-' . $partialWithdrawal->membership->enumber ?? '00000000',
-                            "description" => 'Withdrawals '.date('n').'-'.date('Y'),
-                            "reference" => $request->cheque_no,
-                            "comments" => $partialWithdrawal->membership->regimental_number.' Withdrawal',
-                            "transactioncCodeID" => 'WW',
-                            "taxTypeID" => 1,
-                            "gl" => false,
-                            "ap" => true,
-                        ];
                     }
                 }
-
-                $cashbookPayloads[] = [
-                    'cashbookId' => 'CB084',
-                    'credit' => 0,
-                    'debit' => $partialWithdrawal->withdrawal->approved_amount ?? 0,
-                    'customer' => $partialWithdrawal->membership->regimental_number . '-' . ($partialWithdrawal->membership->enumber ?? '000000'),
-                    'transactionDate' => now()->toIso8601String(),
-                    "description" => 'Withdrawal '.date('n').'-'.date('Y'),
-                    "reference" => $request->cheque_no,
-                    "comments" => $partialWithdrawal->membership->regimental_number.' Withdrawal',
-                    'gl' => false,
-                    'ar' => false,
-                    'ap' => true,
-                ];
+                if ($partialWithdrawal->withdrawal->total_withdraw_amount>0){
+                    $split[] = [
+                        'credit' => 0,
+                        'debit' => $partialWithdrawal->withdrawal->total_withdraw_amount ?? 0,
+                        'customer' => $partialWithdrawal->membership->regimental_number . '-' . ($partialWithdrawal->membership->enumber ?? '000000'),
+                        'transactionDate' => now()->format('Y-m-d'),
+                        "description" => 'Withdrawal '.date('n').'-'.date('Y'),
+                        "reference" => 'Cheque no-'.$request->cheque_no,
+                        "comments" => $partialWithdrawal->membership->regimental_number.' Withdrawal',
+                    ];
+                }
 
                 $partialWithdrawal->reject_reason_id = 0;
                 $partialWithdrawal->processing = 6;
@@ -810,11 +788,41 @@ class WithdrawalController extends Controller
 //                ]);
 
             }
+            $cashbookPayloads[] = [
+                'cashbookId' => 'CB084',
+                'transactionDate' => now()->format('Y-m-d'),
+                "description" => 'Withdrawal '.date('n').'-'.date('Y'),
+                "reference" => 'Cheque no-'.$request->cheque_no,
+                'gl' => false,
+                'ar' => false,
+                'ap' => true,
+                'splitlines' => $split
+            ];
+            $cashbookPayloads[] = [
+                'cashbookId' => 'CB085',
+                'transactionDate' => now()->format('Y-m-d'),
+                "description" => 'Withdrawal '.date('n').'-'.date('Y'),
+                "reference" => $request->cheque_no,
+                'gl' => false,
+                'ar' => false,
+                'ap' => true,
+                'splitlines' => $splitDr
+            ];
+            $cashbookPayloads[] = [
+                'cashbookId' => 'CB085',
+                'transactionDate' => now()->format('Y-m-d'),
+                "description" => 'Withdrawal '.date('n').'-'.date('Y'),
+                "reference" => $request->cheque_no,
+                'gl' => false,
+                'ar' => true,
+                'ap' => false,
+                'splitlines' => $splitCr
+            ];
             //AR
-            $this->sendARBatchUpdate($arPayloads);
+//            $this->sendARBatchUpdate($arPayloads);
             //AP
             $this->sendAPBatchUpdate($apPayloads);
-
+//
             $this->sendCashBookUpdate($cashbookPayloads);
 //            $apiSuccess = $response['success'];
 //            if (!$apiSuccess) {
@@ -1060,7 +1068,7 @@ class WithdrawalController extends Controller
         $voucherId = Carbon::now()->format('Ymd');
         if ($action === 'pay') {
             if (!$this->authenticateApi()) {
-                return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+                return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
             }
             foreach ($fullWithdrawals as $fullWithdrawal) {
                 $suwasahana = Suwasahana::where('member_id', $fullWithdrawal->member_id)
@@ -1088,7 +1096,7 @@ class WithdrawalController extends Controller
                         "transactionDate" => now()->toIso8601String(),
                         "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
                         "description" => 'Loan Recovery from Full Withdrawal',
-                        "reference" => $request->cheque_no,
+                        "reference" => 'Cheque no-'.$request->cheque_no,
                         "comments" => $fullWithdrawal->membership->regimental_number.' Loan Recovery',
                         "transactioncCodeID" => 'LoanRecAss',
                         "taxTypeID" => 1,
@@ -1104,7 +1112,7 @@ class WithdrawalController extends Controller
                             "transactionDate" => now()->toIso8601String(),
                             "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
                             "description" => 'Loan Interest Recovery from Full Withdrawal',
-                            "reference" => $request->cheque_no,
+                            "reference" => 'Cheque no-'.$request->cheque_no,
                             "comments" => $fullWithdrawal->membership->regimental_number.' Loan Interest Recovery',
                             "transactioncCodeID" => 'LoanRecInt',
                             "taxTypeID" => 1,
@@ -1146,9 +1154,9 @@ class WithdrawalController extends Controller
 //                        "debit" => 0,
                             "transactionDate" => now()->toIso8601String(),
                             "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
-                            "description" => 'Suwasahana Loan Recovery from Full Withdrawal',
-                            "reference" => $request->cheque_no,
-                            "comments" => $fullWithdrawal->membership->regimental_number.' Suwasahana Loan Recovery',
+                            "description" => 'Suwasahana Recovery-FW',
+                            "reference" => 'Cheque no-'.$request->cheque_no,
+                            "comments" => $fullWithdrawal->membership->regimental_number.' Suwasahana Recovery from FW',
                             "transactioncCodeID" => 'LoanRecAss',
                             "taxTypeID" => 1,
                             "ar" => true,
@@ -1164,9 +1172,9 @@ class WithdrawalController extends Controller
 //                        "debit" => 0,
                             "transactionDate" => now()->toIso8601String(),
                             "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
-                            "description" => 'Suwasahana Interest Recovery from Full Withdrawal',
-                            "reference" => $request->cheque_no,
-                            "comments" => $fullWithdrawal->membership->regimental_number.' Suwasahana Interest Recovery',
+                            "description" => 'Suwasahana Int Recovery-FW',
+                            "reference" => 'Cheque no-'.$request->cheque_no,
+                            "comments" => $fullWithdrawal->membership->regimental_number.' Suwasahana Interest Recovery ',
                             "transactioncCodeID" => 'LoanRecInt',
                             "taxTypeID" => 1,
                             "ar" => true,
@@ -1187,8 +1195,8 @@ class WithdrawalController extends Controller
 //                        "debit" => 0,
                         "transactionDate" => now()->toIso8601String(),
                         "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
-                        "description" => 'Loan Recovery from Full Withdrawal',
-                        "reference" => $request->cheque_no,
+                        "description" => 'Loan Recovery-Full Withdrawal',
+                        "reference" => 'Cheque no-'.$request->cheque_no,
                         "comments" => $fullWithdrawal->membership->regimental_number.' Loan Recovery',
                         "transactioncCodeID" => 'LoanRecAss',
                         "taxTypeID" => 1,
@@ -1203,8 +1211,8 @@ class WithdrawalController extends Controller
 //                        "debit" => 0,
                             "transactionDate" => now()->toIso8601String(),
                             "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
-                            "description" => 'Loan Interest Recovery from Full Withdrawal',
-                            "reference" => $request->cheque_no,
+                            "description" => 'Loan Interest Recovery-Full Withdrawal',
+                            "reference" => 'Cheque no-'.$request->cheque_no,
                             "comments" => $fullWithdrawal->membership->regimental_number.' Loan Interest Recovery',
                             "transactioncCodeID" => 'LoanRecInt',
                             "taxTypeID" => 1,
@@ -1246,8 +1254,8 @@ class WithdrawalController extends Controller
 //                        "debit" => 0,
                             "transactionDate" => now()->toIso8601String(),
                             "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
-                            "description" => 'Suwasahana Loan Recovery from Full Withdrawal',
-                            "reference" => $request->cheque_no,
+                            "description" => 'Suwasahana Loan Recovery-FW',
+                            "reference" => 'Cheque no-'.$request->cheque_no,
                             "comments" => $fullWithdrawal->membership->regimental_number.' Suwasahana Loan Recovery',
                             "transactioncCodeID" => 'LoanRecAss',
                             "taxTypeID" => 1,
@@ -1264,8 +1272,8 @@ class WithdrawalController extends Controller
 //                        "debit" => 0,
                             "transactionDate" => now()->toIso8601String(),
                             "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
-                            "description" => 'Suwasahana Interest Recovery from Full Withdrawal',
-                            "reference" => $request->cheque_no,
+                            "description" => 'Suwasahana Int-FW',
+                            "reference" => 'Cheque no-'.$request->cheque_no,
                             "comments" => $fullWithdrawal->membership->regimental_number.' Suwasahana Interest Recovery',
                             "transactioncCodeID" => 'LoanRecInt',
                             "taxTypeID" => 1,
@@ -1316,7 +1324,7 @@ class WithdrawalController extends Controller
                         "transactionDate" => now()->toIso8601String(),
                         "customer" => $fullWithdrawal->membership->regimental_number . '-' . $fullWithdrawal->membership->enumber ?? '00000000',
                         "description" => 'Full Withdrawals '.date('n').'-'.date('Y'),
-                        "reference" => $request->cheque_no,
+                        "reference" => 'Cheque no-'.$request->cheque_no,
                         "comments" => $fullWithdrawal->membership->regimental_number.' Full Withdrawal',
                         "transactioncCodeID" => 'WW',
                         "taxTypeID" => 1,
@@ -1332,7 +1340,7 @@ class WithdrawalController extends Controller
                     'customer' => $fullWithdrawal->membership->regimental_number . '-' . ($fullWithdrawal->membership->enumber ?? '000000'),
                     'transactionDate' => now()->toIso8601String(),
                     "description" => 'Full Withdrawal '.date('n').'-'.date('Y'),
-                    "reference" => $request->cheque_no,
+                    "reference" => 'Cheque no-'.$request->cheque_no,
                     "comments" => $fullWithdrawal->membership->regimental_number.' Full Withdrawal',
                     'gl' => false,
                     'ar' => false,

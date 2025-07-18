@@ -229,7 +229,7 @@
                         <div class="col-12 row">
                             <label for="cheque_no" class="col-sm-4 col-form-label">Cheque No</label>
                             <div class="col-sm-8">
-                                <input type="text" name="cheque_no" class="form-control" value="">
+                                <input type="number" min="0" max="999999" name="cheque_no" class="form-control" value="">
                             </div>
                         </div>
                     </div>

@@ -656,9 +656,10 @@ class LoanController extends Controller
 
         $failedApiCount = 0;
         $payloads = [];
+        $split = [];
         $loanMap = []; // map index => loan
         if (!$this->authenticateApi()) {
-            return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+            return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
         }
         // Prepare payloads and update loans locally
         foreach ($loans as $index => $loan) {
@@ -699,25 +700,30 @@ class LoanController extends Controller
 //                'fwd_by_reason' => 'Paid',
 //            ]);
             if ($loan->approved_amount > 0){
-                $payloads[] = [
-                    "cashbookId" => 'CB078',
+                $split[] = [
                     "credit" => 0,
                     "debit" => $loan->approved_amount,
-                    "transactionDate" => now()->toIso8601String(),
+                    "transactionDate" => now()->format('Y-m-d'),
                     "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
                     "description" => $loan->membership->regimental_number . ' 85% Loan' ,
                     "reference" => $request->cheque_no,
                     "comments" => 'Loan disbursement for ' . $loan->application_reg_no,
-                    'gl' => false,
-                    'ar' => true,
-                    'ap' => false,
                 ];
 
             }
 
             $loanMap[$index] = $loan;  // store loan by index for failure logging
         }
-
+        $payloads[] = [
+            "cashbookId" => 'CB078',
+            "transactionDate" => now()->format('Y-m-d'),
+            "description" => $loan->membership->regimental_number . ' 85% Loan' ,
+            "reference" => $request->cheque_no,
+            'gl' => false,
+            'ar' => true,
+            'ap' => false,
+            'splitlines' => $split,
+        ];
         // Send batch API request
         $response = $this->sendCashBookUpdate($payloads);
 
@@ -1521,7 +1527,7 @@ class LoanController extends Controller
             $payloads = [];
 
             if (!$this->authenticateApi()) {
-                return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+                return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
             }
             $loan->created_system = 'AFMS-Update';
             $loan->save();
@@ -1546,8 +1552,8 @@ class LoanController extends Controller
             if ($loan->directSettlement->loan_due_cap>0){
                 $payloads[] = [
                     "cashbookId" => 'CB080',
-                    "credit" => 0,
-                    "debit" => $loan->directSettlement->loan_due_cap ?? 0,
+                    "credit" => $loan->directSettlement->loan_due_cap ?? 0,
+                    "debit" => 0,
                     "transactionDate" => now()->toIso8601String(),
                     "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
                     "description" => 'Direct Settlement '.date('n').'-'.date('Y'),
@@ -1561,9 +1567,9 @@ class LoanController extends Controller
             }
             if ($loan->directSettlement->arrest_interest>0){
                 $payloads[] =[
-                    "cashbookId" => 'CB079',
-                    "credit" => 0,
-                    "debit" => $loan->directSettlement->arrest_interest ?? 0,
+                    "cashbookId" => 'CB086',
+                    "credit" => $loan->directSettlement->arrest_interest ?? 0,
+                    "debit" => 0,
                     "transactionDate" => now()->toIso8601String(),
                     "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
                     "description" => 'Direct Settlement '.date('n').'-'.date('Y'),

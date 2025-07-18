@@ -207,7 +207,7 @@ class MonthlyDeductionController extends Controller
             }
 
             if (!$this->authenticateApi()) {
-                return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+                return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
             }
 
             if ($contributionsAddition->type === 'Refund') {
@@ -247,16 +247,21 @@ class MonthlyDeductionController extends Controller
             } elseif ($contributionsAddition->type === 'Deposit') {
                 $cashBookPayload = [[
                     'cashbookId' => 'CB081',
-                    'credit' => $contributionsAddition->amount,
-                    'debit' => 0,
-                    'customer' => $contributionsAddition->membership->regimental_number . '-' . ($contributionsAddition->membership->enumber ?? '000000'),
-                    'transactionDate' => now()->toIso8601String(),
+                    'transactionDate' => now()->format('Y-m-d'),
                     "description" => 'Additional Deposit '.$month.'-'.$year,
-                    "reference" => $contributionsAddition->membership->regimental_number . ' Additional Deposit',
-                    "comments" => $contributionsAddition->remark ?? $contributionsAddition->reason,
+                    "reference" => $month.'-'.$year,
                     'gl' => false,
                     'ar' => false,
                     'ap' => true,
+                    'splitlines' => [[
+                        'credit' => $contributionsAddition->amount,
+                        'debit' => 0,
+                        'customer' => $contributionsAddition->membership->regimental_number . '-' . ($contributionsAddition->membership->enumber ?? '000000'),
+                        'transactionDate' => now()->format('Y-m-d'),
+                        "comments" => $contributionsAddition->remark ?? $contributionsAddition->reason,
+                        "description" => 'Additional Deposit '.$month.'-'.$year,
+                        "reference" => $contributionsAddition->membership->regimental_number . ' Additional Deposit',
+                    ]],
                 ]];
 
                 $response = $this->sendCashBookUpdate($cashBookPayload);
@@ -386,11 +391,16 @@ class MonthlyDeductionController extends Controller
         $action = $request->input('approval');
         if ($action === 'approve') {
             if (!$this->authenticateApi()) {
-                return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+                return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
             }
 
+//            $existingContribution = ContributionSummary::where('membership_id', $membership_id)
+//                ->latest('transaction_date')
+//                ->first();
+            $year = (int)date('Y');
             $existingContribution = ContributionSummary::where('membership_id', $membership_id)
-                ->latest('transaction_date')
+                ->where('year', $year)
+                ->orderByDesc('icp_id')
                 ->first();
 
             if ($existingContribution) {
@@ -644,105 +654,106 @@ class MonthlyDeductionController extends Controller
 
         // Authenticate with external API
         if (!$this->authenticateApi()) {
-            return response()->json(['error' => 'Failed to authenticate with external API'], 500);
-        }
+            return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
+        } else {
+            $reqCategory = (string) ($request->input('type') ?? $request->input('regiment_id'));
+            $depositYear = (int) $request->input('deposit_year');
+            $depositMonth = (int) $request->input('deposit_month');
 
-        $reqCategory = (string) ($request->input('type') ?? $request->input('regiment_id'));
-        $depositYear = (int) $request->input('deposit_year');
-        $depositMonth = (int) $request->input('deposit_month');
+            $filePath = $request->file('xml_file')->getRealPath();
+            $reader = new XMLReader();
+            $reader->open($filePath);
 
-        $filePath = $request->file('xml_file')->getRealPath();
-        $reader = new XMLReader();
-        $reader->open($filePath);
+            $batch = [];
+            $seenENos = [];
+            $totalInserted = 0;
+            $totalUpdated = 0;
+            $totalFailed = 0;
+            $successMessages = [];
+            $category = null;
+            $categoryId = null;
 
-        $batch = [];
-        $seenENos = [];
-        $totalInserted = 0;
-        $totalUpdated = 0;
-        $totalFailed = 0;
-        $successMessages = [];
-        $category = null;
-        $categoryId = null;
+            while ($reader->read()) {
+                if ($reader->nodeType === XMLReader::ELEMENT && $reader->localName === 'G_REGIMENT') {
+                    $node = simplexml_load_string($reader->readOuterXML());
 
-        while ($reader->read()) {
-            if ($reader->nodeType === XMLReader::ELEMENT && $reader->localName === 'G_REGIMENT') {
-                $node = simplexml_load_string($reader->readOuterXML());
+                    $fieldKey = property_exists($node, 'REGTLNO') ? 'REGTLNO' : (property_exists($node, 'OFFRSNO') ? 'OFFRSNO' : null);
+                    $eNo = (string) $node->E_NO;
 
-                $fieldKey = property_exists($node, 'REGTLNO') ? 'REGTLNO' : (property_exists($node, 'OFFRSNO') ? 'OFFRSNO' : null);
-                $eNo = (string) $node->E_NO;
+                    // Skip duplicate E_NO
+                    if (in_array($eNo, $seenENos)) {
+                        continue;
+                    }
+                    $seenENos[] = $eNo;
 
-                // Skip duplicate E_NO
-                if (in_array($eNo, $seenENos)) {
-                    continue;
+                    if ($fieldKey === 'REGTLNO') {
+                        $category = 'ORs';
+                        $categoryId = 2;
+                    } elseif ($fieldKey === 'OFFRSNO') {
+                        $category = 'Offr';
+                        $categoryId = 1;
+                    }
+
+                    $batch[] = [
+                        'regimental_number' => (string) $node->$fieldKey,
+                        'e_no' => $eNo,
+                        'emp_no' => (string) $node->EMP_NO,
+                        'regiment' => (string) $node->REGIMENT,
+                        'unit' => (string) $node->UNIT,
+                        'category' => $reqCategory,
+                        'type' => $category,
+                        'rank' => (string) $node->RANK,
+                        'name' => (string) $node->NAME,
+                        'amount' => (float) $node->AMOUNT,
+                        'year' => $depositYear,
+                        'month' => $depositMonth,
+                    ];
+
                 }
-                $seenENos[] = $eNo;
-
-                if ($fieldKey === 'REGTLNO') {
-                    $category = 'ORs';
-                    $categoryId = 2;
-                } elseif ($fieldKey === 'OFFRSNO') {
-                    $category = 'Offr';
-                    $categoryId = 1;
-                }
-
-                $batch[] = [
-                    'regimental_number' => (string) $node->$fieldKey,
-                    'e_no' => $eNo,
-                    'emp_no' => (string) $node->EMP_NO,
-                    'regiment' => (string) $node->REGIMENT,
-                    'unit' => (string) $node->UNIT,
-                    'category' => $reqCategory,
-                    'type' => $category,
-                    'rank' => (string) $node->RANK,
-                    'name' => (string) $node->NAME,
-                    'amount' => (float) $node->AMOUNT,
-                    'year' => $depositYear,
-                    'month' => $depositMonth,
-                ];
-
             }
+
+            $reader->close();
+
+            if (!empty($batch)) {
+                $result = $this->processBatch($batch, $depositYear, $depositMonth, $reqCategory);
+                $totalInserted += $result['inserted'];
+                $totalUpdated += $result['updated'];
+                $totalFailed += $result['failed'];
+            }
+
+            $failures = ContributionFailures::where('year', $depositYear)
+                ->where('month', $depositMonth)
+                ->whereRaw('LOWER(category) = ?', [strtolower($reqCategory)])
+                ->get();
+
+            $summary = [
+                'inserted' => $totalInserted,
+                'updated' => $totalUpdated,
+                'failed' => $totalFailed,
+            ];
+
+            $fullCount = $totalInserted + $totalUpdated + $totalFailed;
+            $successCount = $totalInserted + $totalUpdated;
+
+            RecentContribution::create([
+                'regiment' => $reqCategory,
+                'category_id' => $categoryId,
+                'year' => $depositYear,
+                'month' => $depositMonth,
+                'pnr_count' => $fullCount,
+                'success_count' => $successCount,
+            ]);
+
+            return view('monthlyDeductions.upload-report', compact(
+                'failures',
+                'depositYear',
+                'depositMonth',
+                'reqCategory',
+                'summary',
+                'successMessages'
+            ));
         }
 
-        $reader->close();
-
-        if (!empty($batch)) {
-            $result = $this->processBatch($batch, $depositYear, $depositMonth, $reqCategory);
-            $totalInserted += $result['inserted'];
-            $totalUpdated += $result['updated'];
-            $totalFailed += $result['failed'];
-        }
-
-        $failures = ContributionFailures::where('year', $depositYear)
-            ->where('month', $depositMonth)
-            ->whereRaw('LOWER(category) = ?', [strtolower($reqCategory)])
-            ->get();
-
-        $summary = [
-            'inserted' => $totalInserted,
-            'updated' => $totalUpdated,
-            'failed' => $totalFailed,
-        ];
-
-        $fullCount = $totalInserted + $totalUpdated + $totalFailed;
-        $successCount = $totalInserted + $totalUpdated;
-
-        RecentContribution::create([
-            'regiment' => $reqCategory,
-            'category_id' => $categoryId,
-            'year' => $depositYear,
-            'month' => $depositMonth,
-            'pnr_count' => $fullCount,
-            'success_count' => $successCount,
-        ]);
-
-        return view('monthlyDeductions.upload-report', compact(
-            'failures',
-            'depositYear',
-            'depositMonth',
-            'reqCategory',
-            'summary',
-            'successMessages'
-        ));
     }
     private function processBatch(array $records, int $depositYear, int $depositMonth, string $category)
     {
@@ -845,6 +856,7 @@ class MonthlyDeductionController extends Controller
         $toInsert = [];
         $toUpdate = [];
         $cashbookPayload = [];
+        $split = [];
 
         // 4. Process contributions for all members (existing + new)
         foreach ($records as $r) {
@@ -868,10 +880,14 @@ class MonthlyDeductionController extends Controller
                     $toUpdate[] = $contribution;
 
                     // Prepare API payload for update
-                    $cashbookPayload[] = [
-                        'amount' => $contribution->amount,
-                        'eNumber' => $member->regimental_number . '-' . $member->enumber,
-                        'name' => $member->name,
+                    $split[] = [
+                        'credit' => $amount,
+                        'debit' => 0,
+                        'transactionDate' => now()->format('Y-m-d'),
+                        'customer' => $member->regimental_number . '-' . $member->enumber,
+                        'description' => 'P&R Monthly Contribution '.$depositMonth.'-'.$depositYear,
+                        'reference' => $member->regimental_number.' '.$depositMonth.'-'.$depositYear,
+                        'comments' => $member->name,
                     ];
                 } else {
                     // Contribution exists and manual != 1, log failure
@@ -902,23 +918,28 @@ class MonthlyDeductionController extends Controller
                     'transaction_date' => now(),
                 ];
 
-                $cashbookPayload[] = [
-                    'cashbookId' => 'CB084',
+                $split[] = [
                     'credit' => $amount,
                     'debit' => 0,
-                    'transactionDate' => now()->toIso8601String(),
+                    'transactionDate' => now()->format('Y-m-d'),
                     'customer' => $member->regimental_number . '-' . $member->enumber,
                     'description' => 'P&R Monthly Contribution '.$depositMonth.'-'.$depositYear,
                     'reference' => $member->regimental_number.' '.$depositMonth.'-'.$depositYear,
                     'comments' => $member->name,
-                    'gl' => false,
-                    'ar' => false,
-                    'ap' => true,
-                    // 'transactioncCodeID' => 1,
-                    // 'taxTypeID' => 1,
                 ];
             }
         }
+        $cashbookPayload[] = [
+            'cashbookId' => 'CB084',
+            'transactionDate' => now()->format('Y-m-d'),
+            'description' => 'P&R Monthly Contribution '.$depositMonth.'-'.$depositYear,
+            'reference' => $depositMonth.'-'.$depositYear,
+            'gl' => false,
+            'ar' => false,
+            'ap' => true,
+            'splitlines' => $split
+        ];
+
 //        dd($toInsert);
 //         5. Bulk insert new contributions
         if (!empty($toInsert)) {
@@ -1092,7 +1113,7 @@ class MonthlyDeductionController extends Controller
         $category = null;
 
         if (!$this->authenticateApi()) {
-            return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+            return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
         }
 
         while ($reader->read()) {
@@ -1160,7 +1181,7 @@ class MonthlyDeductionController extends Controller
             'success_count' => $successCount,
         ]);
 
-        return view('monthlyDeductions.repayment-report', compact('failures', 'depositYear', 'depositMonth', 'reqCategory', 'summary'));
+        return view('monthlyDeductions.repayment-report', compact('failures', 'depositYear', 'depositMonth', 'reqCategory', 'summary', 'fullCount'));
     }
 //    private function processRepaymentBatch(array $records, int $year, int $month): array
 //    {
@@ -1288,6 +1309,8 @@ class MonthlyDeductionController extends Controller
         $updated = 0;
         $failures = [];
         $cashbookPayload = [];
+        $splitLoan = [];
+        $splitInt = [];
 
         foreach ($records as $r) {
             $key = $r['e_no'] . '|' . $r['regimental_number'];
@@ -1370,41 +1393,52 @@ class MonthlyDeductionController extends Controller
             $name = $r['name'] ?? '';
 
             if ($capital>0){
-                $cashbookPayload[] = [
-                    "cashbookId" => 'CB073',
-                    "credit" => 0,
-                    "debit" => $capital,
-                    "transactionDate" => $now->toIso8601String(),
+                $splitLoan[] = [
+                    "credit" => $capital,
+                    "debit" => 0,
+                    "transactionDate" => now()->format('Y-m-d'),
                     "customer" => $customer,
                     "description" => 'P&R Monthly Loan Recovery '.$month.'-'.$year,
                     "reference" => $r['regimental_number'].' Loan Recovery',
                     "comments" => 'P&R Monthly Loan Recovery ',
-                    "gl" => false,
-                    "ar" => true,
-                    "ap" => false,
                 ];
 
             }
             if ($interest>0){
-                $cashbookPayload[] = [
-                    "cashbookId" => 'CB079',
-                    "credit" => 0,
-                    "debit" => $interest,
-                    "transactionDate" => $now->toIso8601String(),
-                    "customer" => $customer,
+                $splitInt[] = [
+                    "credit" => $interest,
+                    "debit" => 0,
+                    "transactionDate" => now()->format('Y-m-d'),
+                    "customer" => '1000>LOAN INTEREST',
                     "description" => 'P&R Monthly Interest Recovery '.$month.'-'.$year,
                     "reference" => $r['regimental_number'].' Interest Recovery',
                     "comments" => 'P&R Monthly Interest Recovery',
-                    "gl" => false,
-                    "ar" => true,
-                    "ap" => false,
                 ];
 
             }
 
             $updated++;
         }
-
+        $cashbookPayload[] = [
+            "cashbookId" => 'CB087',
+            "transactionDate" => now()->format('Y-m-d'),
+            "description" => 'P&R Monthly Loan Recovery '.$month.'-'.$year,
+            "reference" => $month.'-'.$year,
+            "gl" => false,
+            "ar" => true,
+            "ap" => false,
+            'splitlines' => $splitLoan
+        ];
+        $cashbookPayload[] = [
+            "cashbookId" => 'CB086',
+            "transactionDate" => now()->format('Y-m-d'),
+            "description" => 'P&R Monthly Interest Recovery '.$month.'-'.$year,
+            "reference" => $month.'-'.$year,
+            "gl" => true,
+            "ar" => false,
+            "ap" => false,
+            'splitlines' => $splitInt
+        ];
         // Send to CashBook API
         $cashbookResponse = $this->sendCashBookUpdate($cashbookPayload);
 

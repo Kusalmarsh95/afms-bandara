@@ -145,7 +145,7 @@ class SuwasahanaController extends Controller
     public function update(Request $request, $id)
     {
         if (!$this->authenticateApi()) {
-            return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+            return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
         }
         $validatedData = $request->validate([
             'ABFvoucherno' => 'required',
@@ -405,7 +405,7 @@ class SuwasahanaController extends Controller
         $reader = new \XMLReader();
         $reader->open($request->file('xml_file')->getRealPath());
         if (!$this->authenticateApi()) {
-            return response()->json(['error' => 'Failed to authenticate with external API'], 500);
+            return response()->json(['error' => 'Failed to authenticate with SAGE'], 500);
         }
         while ($reader->read()) {
             if ($reader->nodeType === \XMLReader::ELEMENT && $reader->localName === 'G_EMP_NO_OTHER') {
