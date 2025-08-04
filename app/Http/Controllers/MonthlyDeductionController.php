@@ -110,7 +110,8 @@ class MonthlyDeductionController extends Controller
     public function correctionStore(Request $request, $id)
     {
         $validatedData = $request->validate([
-            'amount' => 'required|numeric',
+            'amount' => 'required|numeric|min:0',
+            'interest' => 'required|numeric|min:0',
             'type' => 'required',
             'remark' => 'required',
         ]);
@@ -319,6 +320,9 @@ class MonthlyDeductionController extends Controller
     }
     private function sendAPBatchUpdate(array $payloads)
     {
+
+        // dd($payloads);
+
         $now = now();
         $filename = 'ap_batch_update_' . $now->format('Ymd_His') . '_' . uniqid() . '.log';
         $logPath = storage_path('logs/adjustments/' . $filename);
@@ -405,9 +409,9 @@ class MonthlyDeductionController extends Controller
 
             if ($existingContribution) {
                 if ($correction->type == 'Addition') {
-                    $existingContribution->opening_balance += $correction->amount;
+                    $existingContribution->opening_balance += $correction->amount + $correction->interest;
                 } elseif ($correction->type == 'Deduction'){
-                    $existingContribution->opening_balance -= $correction->amount;
+                    $existingContribution->opening_balance -= $correction->amount + $correction->interest;
                 }
                 $existingContribution->save();
 
@@ -416,20 +420,88 @@ class MonthlyDeductionController extends Controller
                 $correction->approved_by = Auth::user()->name;
                 $correction->save();
 
-                $payload = [[
-                    "aPbatchId" => 'APB009',
-                    'customer' => $correction->membership->regimental_number . '-' . ($correction->membership->enumber ?? '000000'),
-                    "amount" => $correction->amount ?? 0,
-//                    "debit" => $correction->type === 'Addition' ? $correction->amount : 0,
-                    "transactionDate" => now()->toIso8601String(),
-                    "description" => 'Adjustment Entry '.date('n').'-'.date('Y'),
-                    "reference" => $correction->membership->regimental_number . ' Adjustment Entry',
-                    "comments" => $correction->remark ?? $correction->type,
-                    "transactioncCodeID" => $correction->type === 'Addition' ? 'AdjP' : 'AdjM',
-                    "taxTypeID" => 1,
-                    "gl" => false,
-                    "ap" => true,
-                ]];
+                if ($correction->type == 'Addition') {
+                    $payload = [
+                        [
+                            "aPbatchId" => 'APB009',
+                            'customer' => $correction->membership->regimental_number . '-' . ($correction->membership->enumber ?? '000000'),
+                            "amount" => $correction->amount ?? 0,
+        //                    "debit" => $correction->type === 'Addition' ? $correction->amount : 0,
+                            "transactionDate" => now()->toIso8601String(),
+                            "description" => 'Adjustment Entry '.date('n').'-'.date('Y'),
+                            "reference" => $correction->membership->regimental_number . ' Adjustment Entry',
+                            "comments" => $correction->remark ?? $correction->type,
+                            "transactioncCodeID" => 'AdjPN',
+                            "taxTypeID" => 1,
+                            "gl" => false,
+                            "ap" => true,
+                        ],
+                        [
+                            "aPbatchId" => 'APB009',
+                            'customer' => $correction->membership->regimental_number . '-' . ($correction->membership->enumber ?? '000000'),
+                            "amount" => $correction->interest ?? 0,
+        //                    "debit" => $correction->type === 'Addition' ? $correction->amount : 0,
+                            "transactionDate" => now()->toIso8601String(),
+                            "description" => 'Adjustment Entry '.date('n').'-'.date('Y'),
+                            "reference" => $correction->membership->regimental_number . ' Adjustment Entry',
+                            "comments" => $correction->remark ?? $correction->type,
+                            "transactioncCodeID" => 'LoanRecI',
+                            "taxTypeID" => 1,
+                            "gl" => false,
+                            "ap" => true,
+                        ],
+                    
+                ];
+                } elseif ($correction->type == 'Deduction') {
+                    $payload = [
+                        [
+                            "aPbatchId" => 'APB017',
+                            'customer' => $correction->membership->regimental_number . '-' . ($correction->membership->enumber ?? '000000'),
+                            "amount" => $correction->amount ?? 0,
+        //                    "debit" => $correction->type === 'Addition' ? $correction->amount : 0,
+                            "transactionDate" => now()->toIso8601String(),
+                            "description" => 'Adjustment Entry '.date('n').'-'.date('Y'),
+                            "reference" => $correction->membership->regimental_number . ' Adjustment Entry',
+                            "comments" => $correction->remark ?? $correction->type,
+                            "transactioncCodeID" => 'AdjMN',
+                            "taxTypeID" => 1,
+                            "gl" => false,
+                            "ap" => true,
+                        ],
+                        [
+                            "aPbatchId" => 'APB017',
+                            'customer' => $correction->membership->regimental_number . '-' . ($correction->membership->enumber ?? '000000'),
+                            "amount" => $correction->interest ?? 0,
+        //                    "debit" => $correction->type === 'Addition' ? $correction->amount : 0,
+                            "transactionDate" => now()->toIso8601String(),
+                            "description" => 'Adjustment Entry '.date('n').'-'.date('Y'),
+                            "reference" => $correction->membership->regimental_number . ' Adjustment Entry',
+                            "comments" => $correction->remark ?? $correction->type,
+                            "transactioncCodeID" => 'LoanRecI',
+                            "taxTypeID" => 1,
+                            "gl" => true,
+                            "ap" => false,
+                        ],
+                ];
+                }
+
+
+//                 $payload = [[
+//                     "aPbatchId" => 'APB009',
+//                     'customer' => $correction->membership->regimental_number . '-' . ($correction->membership->enumber ?? '000000'),
+//                     "amount" => $correction->amount ?? 0,
+// //                    "debit" => $correction->type === 'Addition' ? $correction->amount : 0,
+//                     "transactionDate" => now()->toIso8601String(),
+//                     "description" => 'Adjustment Entry '.date('n').'-'.date('Y'),
+//                     "reference" => $correction->membership->regimental_number . ' Adjustment Entry',
+//                     "comments" => $correction->remark ?? $correction->type,
+//                     "transactioncCodeID" => $correction->type === 'Addition' ? 'AdjP' : 'AdjM',
+//                     "taxTypeID" => 1,
+//                     "gl" => false,
+//                     "ap" => true,
+//                 ]];
+
+                dd($payload);
 
                 $apiSuccess = $this->sendAPBatchUpdate($payload);
 
@@ -995,6 +1067,8 @@ class MonthlyDeductionController extends Controller
     }
     private function sendCashBookUpdate(array $payload)
     {
+
+        // dd($payload);
         try {
             $response = Http::timeout(300)
                 ->withHeaders([
@@ -1695,6 +1769,7 @@ class MonthlyDeductionController extends Controller
 
         $validatedData = $request->validate([
             'amount' => 'required',
+            'interest' => 'required',
             'type' => 'required',
             'remark' => 'nullable',
         ]);

@@ -45,7 +45,7 @@
                         @csrf
                         <div class="card-body">
                             <div class="form-group row">
-                                <div class="col-6 row">
+                                <div class="col-4 row">
                                     <label for="type" class="col-sm-4 col-form-label">Type</label>
                                     <div class="col-sm-4">
                                         <select class="form-control" data-live-search="true" name="type" required>
@@ -55,10 +55,16 @@
                                         </select>
                                     </div>
                                 </div>
-                                <div class="col-6 row">
+                                <div class="col-4 row">
                                     <label for="amount" class="col-sm-4 col-form-label">Amount</label>
                                     <div class="col-sm-8">
                                         <input type="text" name="amount" class="form-control col-sm-5" placeholder="Amount" required>
+                                    </div>
+                                </div>
+                                <div class="col-4 row">
+                                    <label for="interest" class="col-sm-4 col-form-label">Interest</label>
+                                    <div class="col-sm-8">
+                                        <input type="text" name="interest" class="form-control col-sm-5" placeholder="Interest" required>
                                     </div>
                                 </div>
                             </div>

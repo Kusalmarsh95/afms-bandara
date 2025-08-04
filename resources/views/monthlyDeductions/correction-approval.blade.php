@@ -30,6 +30,7 @@
                         <th>Type</th>
                         <th>Remark</th>
                         <th>Amount</th>
+                        <th>Interest</th>
                         <th>Action</th>
                     </tr>
                     </thead>
@@ -41,6 +42,7 @@
                                 <td>{{ $correction->type ?? '-' }}</td>
                                 <td>{{ $correction->remark ?? '-' }}</td>
                                 <td>{{ number_format($correction->amount,2) ?? '-' }}</td>
+                                <td>{{ number_format($correction->interest,2) ?? '-' }}</td>
                                 <td class="text-center">
                                     @can('bulk-additional-contribution-edit')
                                         <a class="btn" href="{{ route('corrections.edit',$correction->id) }}"><i class="fas fa-pen" style="color: lightseagreen;"></i></a>
@@ -63,6 +65,7 @@
                         <th>Type</th>
                         <th>Remark</th>
                         <th>Amount</th>
+                        <th>Interest</th>
                         <th>Action</th>
                     </tr>
                     </thead>
@@ -74,6 +77,7 @@
                                 <td>{{ $correction->type ?? '-' }}</td>
                                 <td>{{ $correction->remark ?? '-' }}</td>
                                 <td>{{ number_format($correction->amount,2) ?? '-' }}</td>
+                                <td>{{ number_format($correction->interest,2) ?? '-' }}</td>
                                 <td class="text-center">
                                     @can('bulk-additional-contribution-edit')
                                         <a class="btn" href="{{ route('corrections.edit',$correction->id) }}"><i class="fas fa-pen" style="color: lightseagreen;"></i></a>

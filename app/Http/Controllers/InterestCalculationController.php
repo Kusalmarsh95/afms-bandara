@@ -59,6 +59,8 @@ class InterestCalculationController extends Controller
     private function sendAPBatchUpdate(array $payloads)
     {
 
+// dd($payloads);
+
         $now = now();
         $filename = 'interest_update_' . $now->format('Ymd_His') . '_' . uniqid() . '.log';
         $logPath = storage_path('logs/adjustments/' . $filename);

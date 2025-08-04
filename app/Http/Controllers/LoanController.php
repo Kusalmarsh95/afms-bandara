@@ -646,7 +646,7 @@ class LoanController extends Controller
             ->where('is_banked', '0')
             ->get();
 
-
+            
         $action = $request->approval;
         $voucherId = Carbon::now()->format('Ymd');
 
@@ -863,6 +863,8 @@ class LoanController extends Controller
 //    }
     private function sendCashBookUpdate(array $payload)
     {
+// dd($payload);
+
         try {
             $response = Http::timeout(120)
                 ->withHeaders([
@@ -1550,35 +1552,77 @@ class LoanController extends Controller
             $loan->directSettlement->save();
 
             if ($loan->directSettlement->loan_due_cap>0){
-                $payloads[] = [
-                    "cashbookId" => 'CB080',
+
+                // Prepare cashbook payload
+                $customer = $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000';
+                $month = date('n');
+                $year = date('Y');
+
+                $splitLoan[] = [
+                    // "credit" => $loan->loan->total_capital - $loan->loan->total_recovered_capital,
                     "credit" => $loan->directSettlement->loan_due_cap ?? 0,
                     "debit" => 0,
+                    "transactionDate" => now()->format('Y-m-d'),
+                    "customer" => $customer,
+                    "description" => 'Direct Settlement Loan '.$month.'-'.$year,
+                    "reference" => $loan->membership->regimental_number.' Direct Settlement capital',
+                    "comments" => 'Direct Settlement Loan for ' . $loan->application_reg_no,
+                ];
+
+
+                $payloads[] = [
+                    "cashbookId" => 'CB080',
+                    // "credit" => $loan->directSettlement->loan_due_cap ?? 0,
+                    // "debit" => 0,
                     "transactionDate" => now()->toIso8601String(),
-                    "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
-                    "description" => 'Direct Settlement '.date('n').'-'.date('Y'),
-                    "reference" => $loan->membership->regimental_number .' Direct Settlement capital',
-                    "comments" => 'Direct Settlement for ' . $loan->application_reg_no,
+                    // "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
+                    "description" => 'Direct Settlement Loan '.date('n').'-'.date('Y'),
+                    "reference" => $month.'-'.$year,
+                    // "comments" => 'Direct Settlement Interest for ' . $loan->application_reg_no,
                     'gl' => false,
                     'ar' => true,
                     'ap' => false,
+                    'splitlines' => $splitLoan
                 ];
 
             }
             if ($loan->directSettlement->arrest_interest>0){
-                $payloads[] =[
-                    "cashbookId" => 'CB086',
+                
+                // Prepare cashbook payload
+                $customer = $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000';
+
+                $month = date('n');
+                $year = date('Y');
+
+                $splitInt[] = [
                     "credit" => $loan->directSettlement->arrest_interest ?? 0,
                     "debit" => 0,
-                    "transactionDate" => now()->toIso8601String(),
-                    "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
-                    "description" => 'Direct Settlement '.date('n').'-'.date('Y'),
-                    "reference" => $loan->membership->regimental_number .' Direct Settlement interest',
-                    "comments" => 'Direct Settlement for ' . $loan->application_reg_no,
-                    'gl' => false,
-                    'ar' => true,
-                    'ap' => false,
+                    "transactionDate" => now()->format('Y-m-d'),
+                    "customer" => "1000>LOAN INTEREST",
+                    "description" => 'Direct Settlement Interest '.$month.'-'.$year,
+                    "reference" => $loan->membership->regimental_number.' Direct Settlement Interest',
+                    "comments" => 'Direct Settlement Interest for ' . $loan->application_reg_no,
                 ];
+
+                
+                $payloads[] =[
+                    "cashbookId" => 'CB089',
+                    // "credit" => $loan->directSettlement->arrest_interest ?? 0,
+                    // "debit" => 0,
+                    "transactionDate" => now()->toIso8601String(),
+                    // "customer" => $loan->membership->regimental_number . '-' . $loan->membership->enumber ?? '000000000',
+                    "description" => 'Direct Settlement Interest '.date('n').'-'.date('Y'),
+                    "reference" => $loan->membership->regimental_number .' Direct Settlement interest',
+                    // "comments" => 'Direct Settlement Interest for ' . $loan->application_reg_no,
+                    'gl' => true,
+                    'ar' => false,
+                    'ap' => false,
+                    'splitlines' => $splitInt
+
+                ];
+
+                // dd($payloads);
+
 
             }
 
