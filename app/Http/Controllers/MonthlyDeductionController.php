@@ -501,7 +501,7 @@ class MonthlyDeductionController extends Controller
 //                     "ap" => true,
 //                 ]];
 
-                dd($payload);
+                //dd($payload);
 
                 $apiSuccess = $this->sendAPBatchUpdate($payload);
 
