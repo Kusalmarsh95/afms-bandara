@@ -477,10 +477,10 @@ class MonthlyDeductionController extends Controller
                             "description" => 'Adjustment Entry '.date('n').'-'.date('Y'),
                             "reference" => $correction->membership->regimental_number . ' Adjustment Entry',
                             "comments" => $correction->remark ?? $correction->type,
-                            "transactioncCodeID" => 'LoanRecI',
+                            "transactioncCodeID" => 'LoanRecIM',
                             "taxTypeID" => 1,
-                            "gl" => true,
-                            "ap" => false,
+                            "gl" => false,
+                            "ap" => true,
                         ],
                 ];
                 }
