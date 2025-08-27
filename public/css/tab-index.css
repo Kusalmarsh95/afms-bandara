@@ -14,6 +14,7 @@ body, html {
     cursor: pointer;
     padding: 14px 16px;
     width: 25%;
+    border: #fff 1px  solid;
 }
 
 .tab-link:hover {
